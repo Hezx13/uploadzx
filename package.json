@@ -1,0 +1,37 @@
+{
+  "name": "uploadzx",
+  "version": "1.0.0",
+  "description": "Browser-only TypeScript upload library with tus integration",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "dev": "tsup --watch",
+    "serve": "python -m http.server 8080 || python3 -m http.server 8080 || npx serve . -p 8080",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["upload", "tus", "resumable", "browser", "typescript"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.0.8",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "tus-js-client": "^4.3.1"
+  }
+}

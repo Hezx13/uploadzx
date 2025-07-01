@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restore Unfinished Uploads</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .primary { background: #007bff; color: white; }
+        .success { background: #28a745; color: white; }
+        .warning { background: #ffc107; color: black; }
+        .danger { background: #dc3545; color: white; }
+        .info { background: #17a2b8; color: white; }
+        
+        .upload-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #4CAF50;
+            transition: width 0.3s ease;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 4px solid #007bff;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Restore Unfinished Uploads Demo</h1>
+    
+    <div>
+        <button onclick="addNewFiles()" class="primary">Add New Files</button>
+        <button onclick="restoreUploads()" class="success">Restore Unfinished Uploads</button>
+        <button onclick="clearStorage()" class="danger">Clear Storage</button>
+        <button onclick="checkPermissions()" class="info">Check File Permissions</button>
+    </div>
+    
+    <div id="uploadsList"></div>
+    <div id="log" class="log">Click "Add New Files" to select files, then close the page and reopen to test restoration...</div>
+
+    <script src="./dist/index.global.js"></script>
+    <script>
+        const UploadzxClass = Uploadzx.default || Uploadzx;
+        let uploader;
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+        
+        function initUploader() {
+            uploader = new UploadzxClass({
+                endpoint: 'https://tusd.tusdemo.net/files/',
+                maxConcurrent: 2,
+                chunkSize: 1024 * 256, // Smaller chunks for testing
+                filePickerOptions: {
+                    multiple: true,
+                    useFileSystemAccess: true,
+                }
+            }, {
+                onProgress: (progress) => {
+                    updateProgressUI(progress);
+                    log(`Progress: ${progress.fileId.substring(0, 8)} - ${progress.percentage}%`);
+                },
+                onStateChange: (state) => {
+                    updateStateUI(state);
+                    log(`State change: ${state.fileId.substring(0, 8)} - ${state.status}`);
+                    
+                    if (state.status === 'pending' && !document.getElementById(`item-${state.fileId}`)) {
+                        createUploadItemUI(state);
+                    }
+                },
+                onComplete: (fileId, tusUrl) => {
+                    log(`Upload completed: ${fileId.substring(0, 8)} -> ${tusUrl}`);
+                },
+                onError: (fileId, error) => {
+                    log(`Upload error: ${fileId.substring(0, 8)} - ${error.message}`);
+                }
+            });
+        }
+        
+        function createUploadItemUI(state) {
+            const uploadsDiv = document.getElementById('uploadsList');
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'upload-item';
+            itemDiv.id = `item-${state.fileId}`;
+            itemDiv.innerHTML = `
+                <h3>File ${state.fileId.substring(0, 8)}</h3>
+                <div id="status-${state.fileId}">Status: ${state.status}</div>
+                <div class="progress">
+                    <div id="progress-${state.fileId}" class="progress-bar" style="width: ${state.progress.percentage}%"></div>
+                </div>
+                <button onclick="pauseUpload('${state.fileId}')" class="warning">Pause</button>
+                <button onclick="resumeUpload('${state.fileId}')" class="success">Resume</button>
+                <button onclick="cancelUpload('${state.fileId}')" class="danger">Cancel</button>
+            `;
+            uploadsDiv.appendChild(itemDiv);
+        }
+        
+        function updateProgressUI(progress) {
+            const element = document.getElementById(`progress-${progress.fileId}`);
+            if (element) {
+                element.style.width = `${progress.percentage}%`;
+            }
+        }
+        
+        function updateStateUI(state) {
+            const element = document.getElementById(`status-${state.fileId}`);
+            if (element) {
+                element.textContent = `Status: ${state.status}`;
+            }
+        }
+        
+        async function addNewFiles() {
+            try {
+                log('Adding new files...');
+                await uploader.pickAndUploadFiles();
+            } catch (error) {
+                log(`Error adding files: ${error.message}`);
+            }
+        }
+        
+        async function restoreUploads() {
+            try {
+                log('Attempting to restore unfinished uploads...');
+                await uploader.restoreUnfinishedUploads();
+                log('Restore operation completed. Check console for details.');
+            } catch (error) {
+                log(`Error restoring uploads: ${error.message}`);
+            }
+        }
+        
+        async function clearStorage() {
+            try {
+                log('Clearing storage...');
+                const queue = new UploadzxClass({
+                    endpoint: 'https://tusd.tusdemo.net/files/',
+                }).uploadQueue;
+                
+                const handles = await queue.fileHandleStore.getAllFileHandles();
+                for (const handle of handles) {
+                    await queue.fileHandleStore.removeFileHandle(handle.id);
+                }
+                
+                // Clear UI
+                document.getElementById('uploadsList').innerHTML = '';
+                
+                log(`Cleared ${handles.length} stored file handles`);
+            } catch (error) {
+                log(`Error clearing storage: ${error.message}`);
+            }
+        }
+        
+        async function checkPermissions() {
+            try {
+                log('Checking file permissions...');
+                const queue = new UploadzxClass({
+                    endpoint: 'https://tusd.tusdemo.net/files/',
+                }).uploadQueue;
+                
+                const handles = await queue.fileHandleStore.getAllFileHandles();
+                log(`Found ${handles.length} stored file handles`);
+                
+                for (const handle of handles) {
+                    try {
+                        const hasPermission = await queue.fileHandleStore.verifyPermission(handle.handle);
+                        log(`${handle.name}: Permission ${hasPermission ? 'GRANTED' : 'DENIED'}`);
+                    } catch (error) {
+                        log(`${handle.name}: Permission check failed - ${error.message}`);
+                    }
+                }
+            } catch (error) {
+                log(`Error checking permissions: ${error.message}`);
+            }
+        }
+        
+        // Global functions for upload controls
+        window.pauseUpload = async (fileId) => {
+            await uploader.pauseUpload(fileId);
+            log(`Paused upload: ${fileId.substring(0, 8)}`);
+        };
+        
+        window.resumeUpload = async (fileId) => {
+            await uploader.resumeUpload(fileId);
+            log(`Resumed upload: ${fileId.substring(0, 8)}`);
+        };
+        
+        window.cancelUpload = async (fileId) => {
+            await uploader.cancelUpload(fileId);
+            log(`Cancelled upload: ${fileId.substring(0, 8)}`);
+        };
+        
+        // Initialize on page load
+        initUploader();
+        
+        // Auto-restore on page load (optional)
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('Page loaded. You can now restore unfinished uploads.');
+                // Uncomment to auto-restore:
+                // restoreUploads();
+            }, 1000);
+        });
+        
+        // Check if File System Access API is supported
+        if (!('showOpenFilePicker' in window)) {
+            log('⚠️ File System Access API is not supported in this browser');
+            log('File handle persistence will not work');
+        } else {
+            log('✅ File System Access API is supported');
+        }
+    </script>
+</body>
+</html> 
