@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>uploadzx Vanilla Example</title>
+  </head>
+  <body>
+    <div id="app">
+      <h1>uploadzx Vanilla JavaScript Example</h1>
+      <p>Upload files using the core uploadzx library</p>
+      
+      <div class="upload-container">
+        <div class="upload-controls">
+          <button id="pick-files" class="btn btn-primary">📁 Pick and Upload Files</button>
+          <button id="pause-all" class="btn btn-warning">⏸️ Pause All</button>
+          <button id="resume-all" class="btn btn-success">▶️ Resume All</button>
+          <button id="cancel-all" class="btn btn-danger">❌ Cancel All</button>
+        </div>
+        
+        <div id="dropzone" class="dropzone">
+          <div style="font-size: 18px; margin-bottom: 10px;">📁 Drop files here to upload</div>
+          <div style="font-size: 14px; opacity: 0.7;">or use the button above</div>
+        </div>
+        
+        <div id="stats" class="stats">
+          <strong>Queue Stats:</strong> <span id="queue-stats">0 in queue, 0 active</span>
+        </div>
+        
+        <div id="uploads" class="uploads"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html> 

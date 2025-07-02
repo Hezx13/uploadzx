@@ -72,6 +72,7 @@ export class FileHandleStore {
   }
 
   async removeFileHandle(id: string): Promise<void> {
+    console.log('removeFileHandle', id);
     const db = await this.openDB();
 
     return new Promise((resolve, reject) => {
@@ -86,6 +87,7 @@ export class FileHandleStore {
 
   async verifyPermission(fileHandle: FileSystemFileHandle): Promise<boolean> {
     const permission = await (fileHandle as any).queryPermission({ mode: 'read' });
+    console.log('permission', permission);
     if (permission === 'granted') {
       return true;
     }
@@ -98,7 +100,40 @@ export class FileHandleStore {
     return false;
   }
   
+  async getFileFromHandleByID(id: string): Promise<File | null> {
+    console.log('getFileFromHandleByID', id);
+    const fileHandle = await this.getFileHandle(id);
+    console.log('fileHandle', fileHandle);
+    if (!fileHandle) {
+      console.log("fileHandle not found", id);
+      return null;
+    }
+
+    const hasPermission = await this.verifyPermission(fileHandle.handle);
+    console.log('hasPermission', hasPermission);
+    if (!hasPermission) {
+      try {
+        await (fileHandle.handle as any).requestPermission({ mode: 'read' });
+      }
+      catch {
+        console.log('error requesting permission', fileHandle.id);
+        await this.removeFileHandle(fileHandle.id);
+        return null;
+      }
+    }
+    try {
+      const file = await fileHandle.handle.getFile();
+      console.log('file', file);
+      return file;
+    }
+    catch (error) {
+      console.log('error getting file', error);
+      return null;
+    }
+  }
+
   async clear(): Promise<void> {
+    console.log('clear');
     const db = await this.openDB();
     const transaction = db.transaction([this.storeName], 'readwrite');
     const store = transaction.objectStore(this.storeName);

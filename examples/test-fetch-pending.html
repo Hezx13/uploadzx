@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Fetch Pending Uploads</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+        }
+        .output {
+            background: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #007bff;
+            margin: 20px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Fetch Pending Uploads</h1>
+    
+    <button onclick="fetchPendingUploads()">Fetch Pending Uploads</button>
+    <button onclick="clearIndexedDB()">Clear IndexedDB</button>
+    <button onclick="createTestData()">Create Test Data</button>
+    
+    <div id="output" class="output">Click "Fetch Pending Uploads" to see stored file handles...</div>
+
+    <script src="./dist/index.global.js"></script>
+    <script>
+        const UploadzxClass = Uploadzx.default || Uploadzx;
+        
+        async function fetchPendingUploads() {
+            try {
+                const upload = new UploadzxClass({
+                    endpoint: 'https://tusd.tusdemo.net/files/',
+                    maxConcurrent: 2,
+                    chunkSize: 1024 * 512,
+                });
+                const uploadQueue = upload.uploadQueue;
+                console.log("uploadQueue", uploadQueue);
+                const fileHandles = await uploadQueue.fileHandleStore.getAllFileHandles();
+                
+                const output = document.getElementById('output');
+                output.textContent = `Found ${fileHandles.length} pending file handles:\n\n` + 
+                    JSON.stringify(fileHandles, null, 2);
+                    
+                console.log("fileHandles", fileHandles);
+            } catch (error) {
+                const output = document.getElementById('output');
+                output.textContent = `Error: ${error.message}\n\n${error.stack}`;
+                console.error('Error fetching pending uploads:', error);
+            }
+        }
+        
+        async function clearIndexedDB() {
+            try {
+                const upload = new UploadzxClass({
+                    endpoint: 'https://tusd.tusdemo.net/files/',
+                });
+                const uploadQueue = upload.uploadQueue;
+                const fileHandles = await uploadQueue.fileHandleStore.getAllFileHandles();
+                
+                // Remove all file handles
+                for (const handle of fileHandles) {
+                    await uploadQueue.fileHandleStore.removeFileHandle(handle.id);
+                }
+                
+                const output = document.getElementById('output');
+                output.textContent = `Cleared ${fileHandles.length} file handles from IndexedDB`;
+                
+            } catch (error) {
+                const output = document.getElementById('output');
+                output.textContent = `Error clearing IndexedDB: ${error.message}`;
+                console.error('Error clearing IndexedDB:', error);
+            }
+        }
+        
+        async function createTestData() {
+            try {
+                // Create a mock file for testing
+                const mockFile = new File(['test content'], 'test-file.txt', { type: 'text/plain' });
+                
+                const uploadQueue = new UploadzxClass({
+                    endpoint: 'https://tusd.tusdemo.net/files/',
+                });
+                
+                // Create a mock upload file
+                const uploadFile = {
+                    id: crypto.randomUUID(),
+                    file: mockFile,
+                    name: mockFile.name,
+                    size: mockFile.size,
+                    type: mockFile.type
+                };
+                
+                // For file handles, we need actual FileSystemFileHandle objects
+                // which can only be created through user interaction with File System Access API
+                // So we'll just show how to check for existing ones
+                
+                const output = document.getElementById('output');
+                output.textContent = `Test data creation attempted.\n\nNote: File handles can only be stored when using File System Access API with user interaction.\n\nTry using the main example.html to upload files with File System Access enabled, then come back here to see the stored file handles.`;
+                
+            } catch (error) {
+                const output = document.getElementById('output');
+                output.textContent = `Error creating test data: ${error.message}`;
+                console.error('Error creating test data:', error);
+            }
+        }
+        
+        // Check if we can use File System Access API
+        if ('showOpenFilePicker' in window) {
+            document.body.innerHTML += `
+                <p style="color: green;">✅ File System Access API is supported in this browser</p>
+                <button onclick="testFileSystemAccess()">Test File System Access</button>
+            `;
+            
+            window.testFileSystemAccess = async function() {
+                try {
+                    const fileHandles = await window.showOpenFilePicker({ multiple: true });
+                    
+                    const upload = new UploadzxClass({
+                        endpoint: 'https://tusd.tusdemo.net/files/',
+                    });
+                    const uploadQueue = upload.uploadQueue;
+                    // Store each file handle
+                    for (const fileHandle of fileHandles) {
+                        const id = crypto.randomUUID();
+                        await uploadQueue.fileHandleStore.storeFileHandle(fileHandle, id);
+                    }
+                    
+                    const output = document.getElementById('output');
+                    output.textContent = `Stored ${fileHandles.length} file handles. Now click "Fetch Pending Uploads" to see them.`;
+                    
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        const output = document.getElementById('output');
+                        output.textContent = 'File selection was cancelled';
+                    } else {
+                        console.error('Error with File System Access:', error);
+                    }
+                }
+            };
+        } else {
+            document.body.innerHTML += `
+                <p style="color: orange;">⚠️ File System Access API is not supported in this browser</p>
+            `;
+        }
+    </script>
+</body>
+</html> 

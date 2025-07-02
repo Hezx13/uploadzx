@@ -1,4 +1,4 @@
-import { UploadFile, UploadOptions, UploadEvents, UploadState } from '../types';
+import { UploadFile, UploadOptions, UploadEvents, UploadState, StoredFileHandle } from '../types';
 import { TusUploader } from './TusUploader';
 import { FileHandleStore } from './FileHandleStore';
 
@@ -11,6 +11,7 @@ export class UploadQueue {
   private options: QueueOptions;
   private events: UploadEvents;
   private uploaders: Map<string, TusUploader> = new Map();
+  private unfinishedUploads: Map<string, StoredFileHandle> = new Map();
   private queue: string[] = [];
   private activeUploads: Set<string> = new Set();
   public fileHandleStore: FileHandleStore;
@@ -24,7 +25,7 @@ export class UploadQueue {
     };
     this.events = events;
     this.fileHandleStore = new FileHandleStore();
-    this.getUnfinishedUploads();
+    this.getUnfinishedUploadsFromStore();
   }
 
   async addFiles(files: UploadFile[]): Promise<void> {
@@ -130,8 +131,12 @@ export class UploadQueue {
     return this.activeUploads.size;
   }
 
-  async restoreUnfinishedUploads(): Promise<void> {
-    await this.getUnfinishedUploads();
+  async getUnfinishedUploads(): Promise<StoredFileHandle[]> {
+    return Array.from(this.unfinishedUploads.values());
+  }
+
+  async restoreUnfinishedUpload(fileHandleOrId: StoredFileHandle | string): Promise<void> {
+    return await this.resumeUnfinishedUpload(fileHandleOrId);
   }
 
   private async processQueue(): Promise<void> {
@@ -160,6 +165,7 @@ export class UploadQueue {
 
   private handleComplete(fileId: string, tusUrl: string): void {
     this.activeUploads.delete(fileId);
+    this.unfinishedUploads.delete(fileId);
     this.events.onComplete?.(fileId, tusUrl);
     this.processQueue();
   }
@@ -177,52 +183,52 @@ export class UploadQueue {
     }
   }
 
-  private async getUnfinishedUploads(): Promise<void> {
+  private async getUnfinishedUploadsFromStore(): Promise<void> {
     const fileHandles = await this.fileHandleStore.getAllFileHandles();
     console.log('Found unfinished uploads:', fileHandles.length);
     
-    for (const fileHandle of fileHandles) {
-      try {
-        // First, verify we have permission to access this file
-        const hasPermission = await this.fileHandleStore.verifyPermission(fileHandle.handle);
-        
-        if (!hasPermission) {
-          console.warn(`Permission denied for file: ${fileHandle.name}. Removing from storage.`);
-          // Remove the file handle from storage if we can't access it
-          await this.fileHandleStore.removeFileHandle(fileHandle.id);
-          continue;
-        }
-        
-        // Now we can safely get the file
-        const file = await fileHandle.handle.getFile();
-        
-        // Verify the file hasn't changed (optional integrity check)
-        if (file.lastModified !== fileHandle.lastModified) {
-          console.warn(`File modified since last access: ${fileHandle.name}. Removing from storage.`);
-          await this.fileHandleStore.removeFileHandle(fileHandle.id);
-          continue;
-        }
-        
-        await this.addFiles([{
-          id: fileHandle.id,
-          file: file,
-          fileHandle: fileHandle.handle,
-          name: fileHandle.name,
-          size: fileHandle.size,
-          type: fileHandle.type,
-        }]);
-        
-        console.log(`Successfully restored file: ${fileHandle.name}`);
-        
-      } catch (error) {
-        console.error(`Error accessing file ${fileHandle.name}:`, error);
-        
-        // If it's a permission or file access error, remove the stale file handle
-        if (error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'NotFoundError')) {
-          console.warn(`Removing stale file handle: ${fileHandle.name}`);
-          await this.fileHandleStore.removeFileHandle(fileHandle.id);
-        }
-      }
+    this.unfinishedUploads = new Map(fileHandles.map(fileHandle => [fileHandle.id, fileHandle]));
+  }
+
+  private async resumeUnfinishedUpload(fileHandleOrId: StoredFileHandle | string): Promise<void> {
+    let id;
+    let fileHandle;
+    console.log('resumeUnfinishedUpload', fileHandleOrId);
+    if (typeof fileHandleOrId === 'string') {
+      id = fileHandleOrId;
+      fileHandle = this.unfinishedUploads.get(id);
+      console.log('fileHandle', fileHandle);
     }
+    else {
+      id = fileHandleOrId.id;
+      fileHandle = fileHandleOrId;
+    }
+
+    if (!fileHandle) {
+      console.log('fileHandle not found');
+      return;
+    }
+
+    const file = await this.fileHandleStore.getFileFromHandleByID(id);
+    console.log('file restored', file);
+    if (!file) {
+      console.log('file not found');
+      return;
+    }
+
+    if (file.lastModified !== fileHandle.lastModified) {
+      console.warn(`File modified since last access: ${fileHandle.name}. Removing from storage.`);
+      await this.fileHandleStore.removeFileHandle(fileHandle.id);
+      return;
+    }
+    console.log('file found', file);
+    await this.addFiles([{
+      id: fileHandle.id,
+      file: file,
+      fileHandle: fileHandle.handle,
+      name: fileHandle.name,
+      size: fileHandle.size,
+      type: fileHandle.type,
+    }]);
   }
 } 

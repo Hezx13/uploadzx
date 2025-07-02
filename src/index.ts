@@ -13,7 +13,7 @@ export * from './utils';
 // Main library class
 import { FilePicker } from './core/FilePicker';
 import { UploadQueue, QueueOptions } from './core/UploadQueue';
-import { FilePickerOptions, UploadEvents } from './types';
+import { FilePickerOptions, StoredFileHandle, UploadEvents } from './types';
 
 export interface UploadzxOptions extends QueueOptions {
   filePickerOptions?: FilePickerOptions;
@@ -71,6 +71,10 @@ export class Uploadzx {
     return this.uploadQueue.cancelUpload(fileId);
   }
 
+  async restoreUnfinishedUpload(fileHandleOrId: StoredFileHandle | string) {
+    return this.uploadQueue.restoreUnfinishedUpload(fileHandleOrId);
+  }
+
   getUploadState(fileId: string) {
     return this.uploadQueue.getUploadState(fileId);
   }
@@ -86,8 +90,8 @@ export class Uploadzx {
     };
   }
 
-  async restoreUnfinishedUploads() {
-    return this.uploadQueue.restoreUnfinishedUploads();
+  async getUnfinishedUploads() {
+    return this.uploadQueue.getUnfinishedUploads();
   }
 }
 

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uploadzx Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #4CAF50;
+            transition: width 0.3s ease;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .primary { background: #007bff; color: white; }
+        .success { background: #28a745; color: white; }
+        .warning { background: #ffc107; color: black; }
+        .danger { background: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Uploadzx Upload Example</h1>
+    
+    <div>
+        <button id="pickFiles" class="primary">Pick Files</button>
+        <button id="pickAndUpload" class="success">Pick & Upload</button>
+        <button id="pauseAll" class="warning">Pause All</button>
+        <button id="resumeAll" class="success">Resume All</button>
+        <button id="cancelAll" class="danger">Cancel All</button>
+        <button onclick="fetchPending()" class="primary">Fetch Pending</button>
+    </div>
+
+    <div id="uploadsList"></div>
+    <div id="unfinishedUploadsList"></div>
+    <script src="../fetchPending.js" type="module"></script>
+    <script src="../dist/index.global.js"></script>
+    <script>
+        // Uploadzx is now available as a global variable
+        // For IIFE builds, we need to use .default
+        const UploadzxClass = Uploadzx.default || Uploadzx;
+        console.log('Uploadzx example loaded', UploadzxClass);
+        
+        // Example configuration for when the library is built
+        const uploaderConfig = {
+            endpoint: 'https://tusd.tusdemo.net/files/', // Demo tus server
+            maxConcurrent: 2,
+            chunkSize: 1024 * 512, // 512KB chunks
+            filePickerOptions: {
+                multiple: true,
+                useFileSystemAccess: window.showOpenFilePicker ? true : false,
+            }
+        };
+
+        const events = {
+            onProgress: (progress) => {
+                console.log(`Progress: ${progress.fileId} - ${progress.percentage}%`);
+                updateProgressUI(progress);
+            },
+            onStateChange: (state) => {
+                console.log(`State change: ${state.fileId} - ${state.status}`);
+                updateStateUI(state);
+                
+                // Create UI for new files
+                if ( !document.getElementById(`status-${state.fileId}`) && state.fileId) {
+                    createUploadItemUI(state);
+                }
+            },
+            onComplete: (fileId, tusUrl) => {
+                console.log(`Upload completed: ${fileId} -> ${tusUrl}`);
+            },
+            onError: (fileId, error) => {
+                console.error(`Upload error: ${fileId}`, error);
+            }
+        };
+
+        // Placeholder functions for UI updates
+        function updateProgressUI(progress) {
+            const element = document.getElementById(`progress-${progress.fileId}`);
+            if (element) {
+                element.style.width = `${progress.percentage}%`;
+            }
+        }
+
+        function updateStateUI(state) {
+            console.log('updateStateUI', state);
+            const element = document.getElementById(`status-${state.fileId}`);
+            if (element) {
+                element.textContent = `Status: ${state.status}`;
+                element.className = `status ${state.status}`;
+            }
+        }
+
+        function createUploadItemUI(state) {
+            const file = state.file;
+            const uploadsDiv = document.getElementById('uploadsList');
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'upload-item';
+            itemDiv.innerHTML = `
+                <h3>${file.name}</h3>
+                <p>Size: ${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                <div id="status-${state.fileId}" class="status">Status: pending</div>
+                <div class="progress">
+                    <div id="progress-${state.fileId}" class="progress-bar" style="width: 0%"></div>
+                </div>
+                <button onclick="pauseUpload('${state.fileId}')" class="warning">Pause</button>
+                <button onclick="resumeUpload('${state.fileId}')" class="success">Resume</button>
+                <button onclick="cancelUpload('${state.fileId}')" class="danger">Cancel</button>
+            `;
+            uploadsDiv.appendChild(itemDiv);
+        }
+        const uploader = new UploadzxClass(uploaderConfig, events);
+        // get unifinished uploads
+        async function getUnfinishedUploads() {
+            const unfinishedUploads = await uploader.uploadQueue.fileHandleStore.getAllFileHandles();
+            unfinishedUploads.forEach(upload => {
+                const unfinishedUploadsDiv = document.getElementById('unfinishedUploadsList');
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'upload-item';
+                itemDiv.innerHTML = `
+                    <h3>${upload.name}</h3>
+                    <p>Size: ${(upload.size / 1024 / 1024).toFixed(2)} MB</p>
+                    <button onclick="resumeUpload('${upload.id}')" class="success">Resume</button>
+                `;
+                unfinishedUploadsDiv.appendChild(itemDiv);
+            });
+        }
+        // Event listeners
+        document.getElementById('pickFiles').addEventListener('click', async () => {
+            console.log('Pick files clicked');
+            try {
+                const files = await uploader.pickFiles();
+                console.log('Selected files:', files);
+                if (files.length > 0) {
+                    await uploader.addFiles(files);
+                }
+            } catch (error) {
+                console.error('Error picking files:', error);
+            }
+        });
+
+        document.getElementById('pickAndUpload').addEventListener('click', async () => {
+            console.log('Pick and upload clicked');
+            try {
+                await uploader.pickAndUploadFiles();
+            } catch (error) {
+                console.error('Error in pick and upload:', error);
+            }
+        });
+
+        document.getElementById('pauseAll').addEventListener('click', () => {
+            console.log('Pause all clicked - would use uploader.pauseAll()');
+            uploader.pauseAll();
+        });
+
+        document.getElementById('resumeAll').addEventListener('click', () => {
+            console.log('Resume all clicked - would use uploader.resumeAll()');
+            uploader.resumeAll();
+        });
+
+        document.getElementById('cancelAll').addEventListener('click', () => {
+            console.log('Cancel all clicked - would use uploader.cancelAll()');
+            uploader.cancelAll();
+        });
+
+        // Global functions for individual file controls
+        window.pauseUpload = (fileId) => {
+            console.log(`Pause upload: ${fileId}`);
+            uploader.pauseUpload(fileId);
+        };
+
+        window.resumeUpload = (fileId) => {
+            console.log(`Resume upload: ${fileId}`);
+            uploader.resumeUpload(fileId);
+        };
+
+        window.cancelUpload = (fileId) => {
+            console.log(`Cancel upload: ${fileId}`);
+            uploader.cancelUpload(fileId);
+        };
+        window.fetchPending = () => {
+            console.log('Fetch pending clicked');
+            getUnfinishedUploads();
+        };
+    </script>
+</body>
+</html> 

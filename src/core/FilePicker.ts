@@ -13,8 +13,10 @@ export class FilePicker {
 
   async pickFiles(): Promise<UploadFile[]> {
     if (this.options.useFileSystemAccess && 'showOpenFilePicker' in window) {
+      console.log('Picking files with file system access');
       return this.pickWithFileSystemAccess();
     }
+    console.log('Picking files with input');
     return this.pickWithInput();
   }
 
