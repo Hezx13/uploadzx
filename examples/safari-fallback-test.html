@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safari Fallback Test - Uploadzx</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .browser-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+        }
+        .test-section.safari-fallback {
+            border-color: #ff9500;
+            background: #fff8f0;
+        }
+        .test-section.native-support {
+            border-color: #007aff;
+            background: #f0f8ff;
+        }
+        button {
+            background: #007aff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 10px 10px 0;
+        }
+        button:hover {
+            background: #0056cc;
+        }
+        button.safari {
+            background: #ff9500;
+        }
+        button.safari:hover {
+            background: #cc7700;
+        }
+        .file-list {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .file-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid #007aff;
+        }
+        .file-item.safari {
+            border-left-color: #ff9500;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🦊 Safari Fallback Test</h1>
+        <p>This page tests the Safari fallback functionality for the uploadzx File System Access API.</p>
+        
+        <div class="browser-info" id="browserInfo">
+            <h3>Browser Information</h3>
+            <div id="browserDetails">Loading...</div>
+        </div>
+
+        <div class="test-section" id="testSection">
+            <h3>File System Access Test</h3>
+            <p id="supportMessage">Checking support...</p>
+            
+            <button id="testNativeBtn">Test Native File System API</button>
+            <button id="testFallbackBtn" class="safari">Test Safari Fallback</button>
+            <button id="clearStorageBtn">Clear Storage</button>
+            
+            <div class="status" id="status" style="display: none;"></div>
+            <div class="file-list" id="fileList" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Stored Files</h3>
+            <button id="loadStoredBtn">Load Stored Files</button>
+            <button id="testFileAccessBtn">Test File Access</button>
+            
+            <div id="storedFilesList"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import uploadzx (you'll need to build it first)
+        // For testing, we'll implement a simplified version here
+        
+        class FileHandleStore {
+            constructor() {
+                this.dbName = 'uploadzx-filehandles';
+                this.version = 2;
+                this.storeName = 'filehandles';
+                this.safariStoreName = 'safari-files';
+                this.isFileSystemAccessSupported = this.checkFileSystemAccessSupport();
+            }
+
+            checkFileSystemAccessSupport() {
+                return typeof window !== 'undefined' && 
+                       'showOpenFilePicker' in window && 
+                       'showSaveFilePicker' in window && 
+                       'showDirectoryPicker' in window;
+            }
+
+            async openDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(this.dbName, this.version);
+                    request.onerror = () => reject(request.error);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onupgradeneeded = () => {
+                        const db = request.result;
+                        if (!db.objectStoreNames.contains(this.storeName)) {
+                            const store = db.createObjectStore(this.storeName, { keyPath: 'id' });
+                            store.createIndex('name', 'name', { unique: false });
+                        }
+                        if (!db.objectStoreNames.contains(this.safariStoreName)) {
+                            const safariStore = db.createObjectStore(this.safariStoreName, { keyPath: 'id' });
+                            safariStore.createIndex('name', 'name', { unique: false });
+                        }
+                    };
+                });
+            }
+
+            async storeFile(file, id, useFallback = false) {
+                const db = await this.openDB();
+                
+                if (!useFallback && this.isFileSystemAccessSupported) {
+                    // Native mode - create mock handle
+                    const mockHandle = this.createMockFileHandle(file);
+                    const storedHandle = {
+                        id,
+                        name: file.name,
+                        size: file.size,
+                        type: file.type,
+                        handle: mockHandle,
+                        lastModified: file.lastModified,
+                    };
+
+                    return new Promise((resolve, reject) => {
+                        const transaction = db.transaction([this.storeName], 'readwrite');
+                        const store = transaction.objectStore(this.storeName);
+                        const request = store.put(storedHandle);
+                        request.onerror = () => reject(request.error);
+                        request.onsuccess = () => resolve();
+                    });
+                } else {
+                    // Safari fallback mode - store actual file data
+                    const data = await file.arrayBuffer();
+                    const safariFile = {
+                        id,
+                        name: file.name,
+                        size: file.size,
+                        type: file.type,
+                        lastModified: file.lastModified,
+                        data,
+                    };
+
+                    return new Promise((resolve, reject) => {
+                        const transaction = db.transaction([this.safariStoreName], 'readwrite');
+                        const store = transaction.objectStore(this.safariStoreName);
+                        const request = store.put(safariFile);
+                        request.onerror = () => reject(request.error);
+                        request.onsuccess = () => resolve();
+                    });
+                }
+            }
+
+            createMockFileHandle(file) {
+                return {
+                    kind: 'file',
+                    name: file.name,
+                    getFile: async () => file,
+                    queryPermission: async () => 'granted',
+                    requestPermission: async () => 'granted',
+                    createWritable: async () => {
+                        throw new Error('Write operations not supported in fallback mode');
+                    },
+                    isSameEntry: async () => false,
+                };
+            }
+
+            async getAllFiles() {
+                const db = await this.openDB();
+                const storeName = this.isFileSystemAccessSupported ? this.storeName : this.safariStoreName;
+                
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([storeName], 'readonly');
+                    const store = transaction.objectStore(storeName);
+                    const request = store.getAll();
+                    request.onerror = () => reject(request.error);
+                    request.onsuccess = () => resolve(request.result);
+                });
+            }
+
+            async clear() {
+                const db = await this.openDB();
+                const transaction = db.transaction([this.storeName, this.safariStoreName], 'readwrite');
+                
+                [this.storeName, this.safariStoreName].forEach(storeName => {
+                    if (db.objectStoreNames.contains(storeName)) {
+                        const store = transaction.objectStore(storeName);
+                        store.clear();
+                    }
+                });
+            }
+        }
+
+        // Browser detection utilities
+        function isSafari() {
+            const userAgent = window.navigator.userAgent;
+            const vendor = window.navigator.vendor;
+            return /Safari/.test(userAgent) && 
+                   /Apple Computer/.test(vendor) && 
+                   !/Chrome/.test(userAgent) && 
+                   !/Chromium/.test(userAgent);
+        }
+
+        function getBrowserInfo() {
+            const userAgent = window.navigator.userAgent;
+            let browserName = 'Unknown';
+            let version = 'Unknown';
+
+            if (isSafari()) {
+                browserName = 'Safari';
+                const match = userAgent.match(/Version\/([0-9._]+)/);
+                version = match ? match[1] : 'Unknown';
+            } else if (/Chrome/.test(userAgent)) {
+                browserName = 'Chrome';
+                const match = userAgent.match(/Chrome\/([0-9.]+)/);
+                version = match ? match[1] : 'Unknown';
+            } else if (/Firefox/.test(userAgent)) {
+                browserName = 'Firefox';
+                const match = userAgent.match(/Firefox\/([0-9.]+)/);
+                version = match ? match[1] : 'Unknown';
+            } else if (/Edge/.test(userAgent)) {
+                browserName = 'Edge';
+                const match = userAgent.match(/Edge\/([0-9.]+)/);
+                version = match ? match[1] : 'Unknown';
+            }
+
+            const isFileSystemAccessSupported = 'showOpenFilePicker' in window;
+
+            return { name: browserName, version, isFileSystemAccessSupported };
+        }
+
+        // Initialize the test
+        const fileStore = new FileHandleStore();
+        const browserInfo = getBrowserInfo();
+
+        // Update UI with browser info
+        document.getElementById('browserDetails').innerHTML = `
+            <strong>Browser:</strong> ${browserInfo.name} ${browserInfo.version}<br>
+            <strong>File System Access API:</strong> ${browserInfo.isFileSystemAccessSupported ? '✅ Supported' : '❌ Not Supported'}<br>
+            <strong>Using Fallback:</strong> ${!browserInfo.isFileSystemAccessSupported ? '✅ Yes (Safari Mode)' : '❌ No (Native Mode)'}
+        `;
+
+        const testSection = document.getElementById('testSection');
+        if (browserInfo.isFileSystemAccessSupported) {
+            testSection.classList.add('native-support');
+            document.getElementById('supportMessage').textContent = 'File System Access API is supported! Testing both native and fallback modes.';
+        } else {
+            testSection.classList.add('safari-fallback');
+            document.getElementById('supportMessage').textContent = 'File System Access API not supported. Using Safari fallback mode.';
+        }
+
+        // Event handlers
+        document.getElementById('testNativeBtn').addEventListener('click', async () => {
+            try {
+                if (browserInfo.isFileSystemAccessSupported) {
+                    const fileHandles = await window.showOpenFilePicker({ multiple: true });
+                    await processFiles(fileHandles.map(handle => handle.getFile()), false, 'Native File System API');
+                } else {
+                    showStatus('File System Access API not supported in this browser', 'error');
+                }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    showStatus(`Error: ${error.message}`, 'error');
+                }
+            }
+        });
+
+        document.getElementById('testFallbackBtn').addEventListener('click', async () => {
+            // Always use input file picker for fallback test
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.onchange = async () => {
+                const files = Array.from(input.files || []);
+                await processFiles(files, true, 'Safari Fallback Mode');
+            };
+            input.click();
+        });
+
+        document.getElementById('clearStorageBtn').addEventListener('click', async () => {
+            try {
+                await fileStore.clear();
+                showStatus('Storage cleared successfully', 'success');
+                document.getElementById('fileList').style.display = 'none';
+                document.getElementById('storedFilesList').innerHTML = '';
+            } catch (error) {
+                showStatus(`Error clearing storage: ${error.message}`, 'error');
+            }
+        });
+
+        document.getElementById('loadStoredBtn').addEventListener('click', async () => {
+            try {
+                const storedFiles = await fileStore.getAllFiles();
+                displayStoredFiles(storedFiles);
+            } catch (error) {
+                showStatus(`Error loading stored files: ${error.message}`, 'error');
+            }
+        });
+
+        document.getElementById('testFileAccessBtn').addEventListener('click', async () => {
+            try {
+                const storedFiles = await fileStore.getAllFiles();
+                if (storedFiles.length === 0) {
+                    showStatus('No stored files to test', 'info');
+                    return;
+                }
+
+                for (const storedFile of storedFiles) {
+                    if (storedFile.handle) {
+                        try {
+                            const file = await storedFile.handle.getFile();
+                            console.log(`Successfully accessed file: ${file.name}`);
+                        } catch (error) {
+                            console.error(`Error accessing file ${storedFile.name}:`, error);
+                        }
+                    } else if (storedFile.data) {
+                        // Safari fallback mode
+                        const file = new File([storedFile.data], storedFile.name, {
+                            type: storedFile.type,
+                            lastModified: storedFile.lastModified,
+                        });
+                        console.log(`Successfully reconstructed file: ${file.name}`);
+                    }
+                }
+                showStatus('File access test completed. Check console for details.', 'success');
+            } catch (error) {
+                showStatus(`Error testing file access: ${error.message}`, 'error');
+            }
+        });
+
+        async function processFiles(files, useFallback, mode) {
+            try {
+                const filePromises = files.map(file => file instanceof File ? Promise.resolve(file) : file);
+                const resolvedFiles = await Promise.all(filePromises);
+                
+                for (const file of resolvedFiles) {
+                    const id = crypto.randomUUID();
+                    await fileStore.storeFile(file, id, useFallback);
+                }
+
+                showStatus(`Successfully stored ${resolvedFiles.length} file(s) using ${mode}`, 'success');
+                displayFiles(resolvedFiles, mode);
+            } catch (error) {
+                showStatus(`Error processing files: ${error.message}`, 'error');
+            }
+        }
+
+        function displayFiles(files, mode) {
+            const fileList = document.getElementById('fileList');
+            fileList.innerHTML = '<h4>Selected Files:</h4>';
+            
+            files.forEach(file => {
+                const fileItem = document.createElement('div');
+                fileItem.className = `file-item ${mode.includes('Safari') ? 'safari' : ''}`;
+                fileItem.innerHTML = `
+                    <strong>${file.name}</strong><br>
+                    Size: ${formatFileSize(file.size)}<br>
+                    Type: ${file.type}<br>
+                    Mode: ${mode}
+                `;
+                fileList.appendChild(fileItem);
+            });
+            
+            fileList.style.display = 'block';
+        }
+
+        function displayStoredFiles(storedFiles) {
+            const container = document.getElementById('storedFilesList');
+            
+            if (storedFiles.length === 0) {
+                container.innerHTML = '<p>No stored files found.</p>';
+                return;
+            }
+
+            container.innerHTML = '<h4>Stored Files:</h4>';
+            
+            storedFiles.forEach(storedFile => {
+                const fileItem = document.createElement('div');
+                fileItem.className = `file-item ${storedFile.data ? 'safari' : ''}`;
+                fileItem.innerHTML = `
+                    <strong>${storedFile.name}</strong><br>
+                    Size: ${formatFileSize(storedFile.size)}<br>
+                    Type: ${storedFile.type}<br>
+                    Storage: ${storedFile.data ? 'Safari Fallback (File Data)' : 'Native (File Handle)'}<br>
+                    ID: ${storedFile.id}
+                `;
+                container.appendChild(fileItem);
+            });
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 5000);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html> 

@@ -28,6 +28,10 @@ export class Uploadzx {
     this.uploadQueue = new UploadQueue(options, events);
   }
 
+  getIsInitialized(): boolean {
+    return this.uploadQueue.getIsInitialized();
+  }
+
   async pickAndUploadFiles(): Promise<void> {
     const files = await this.filePicker.pickFiles();
     if (files.length > 0) {
@@ -56,6 +60,7 @@ export class Uploadzx {
   }
 
   async cancelAll() {
+    console.log('cancelAll');
     return this.uploadQueue.cancelAll();
   }
 
@@ -73,6 +78,10 @@ export class Uploadzx {
 
   async restoreUnfinishedUpload(fileHandleOrId: StoredFileHandle | string) {
     return this.uploadQueue.restoreUnfinishedUpload(fileHandleOrId);
+  }
+
+  async clearCompletedUploads() {
+    return this.uploadQueue.clearCompletedUploads();
   }
 
   getUploadState(fileId: string) {

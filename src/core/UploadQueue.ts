@@ -1,5 +1,5 @@
 import { UploadFile, UploadOptions, UploadEvents, UploadState, StoredFileHandle } from '../types';
-import { TusUploader } from './TusUploader';
+import { TusUploader, TusUploaderOptions } from './TusUploader';
 import { FileHandleStore } from './FileHandleStore';
 
 export interface QueueOptions extends UploadOptions {
@@ -14,6 +14,7 @@ export class UploadQueue {
   private unfinishedUploads: Map<string, StoredFileHandle> = new Map();
   private queue: string[] = [];
   private activeUploads: Set<string> = new Set();
+  private isInitialized: boolean = false;
   public fileHandleStore: FileHandleStore;
 
   constructor(options: QueueOptions, events: UploadEvents = {}) {
@@ -25,7 +26,24 @@ export class UploadQueue {
     };
     this.events = events;
     this.fileHandleStore = new FileHandleStore();
-    this.getUnfinishedUploadsFromStore();
+    
+    // Initialize asynchronously
+    this.initialize();
+  }
+
+  private async initialize(): Promise<void> {
+    try {
+      await this.getUnfinishedUploadsFromStore();
+      this.isInitialized = true;
+      this.options.onInit?.();
+    } catch (error) {
+      console.error('Failed to initialize UploadQueue:', error);
+      this.options.onInit?.();
+    }
+  }
+
+  public getIsInitialized(): boolean {
+    return this.isInitialized;
   }
 
   async addFiles(files: UploadFile[]): Promise<void> {
@@ -67,6 +85,8 @@ export class UploadQueue {
   async pauseAll(): Promise<void> {
     for (const uploader of this.uploaders.values()) {
       await uploader.pause();
+      // Update stored file handle with current upload progress
+      await this.updateStoredFileHandleProgress(uploader);
     }
   }
 
@@ -93,6 +113,8 @@ export class UploadQueue {
     const uploader = this.uploaders.get(fileId);
     if (uploader) {
       await uploader.pause();
+      // Update stored file handle with current upload progress
+      await this.updateStoredFileHandleProgress(uploader);
     }
   }
 
@@ -104,13 +126,23 @@ export class UploadQueue {
   }
 
   async cancelUpload(fileId: string): Promise<void> {
+    console.log('cancelUpload', fileId);
     const uploader = this.uploaders.get(fileId);
+    console.log('uploader', uploader);
     if (uploader) {
       await uploader.cancel();
       this.activeUploads.delete(fileId);
       this.removeFromQueue(fileId);
       this.processQueue();
       this.fileHandleStore.removeFileHandle(fileId);
+    }
+  }
+
+  clearCompletedUploads(): void {
+    for (const fileId of this.uploaders.keys()) {
+      if (this.activeUploads.has(fileId)) {
+        this.uploaders.delete(fileId);
+      }
     }
   }
 
@@ -132,11 +164,31 @@ export class UploadQueue {
   }
 
   async getUnfinishedUploads(): Promise<StoredFileHandle[]> {
+    console.log('getUnfinishedUploads', this.unfinishedUploads);
     return Array.from(this.unfinishedUploads.values());
   }
 
   async restoreUnfinishedUpload(fileHandleOrId: StoredFileHandle | string): Promise<void> {
     return await this.resumeUnfinishedUpload(fileHandleOrId);
+  }
+
+  private async updateStoredFileHandleProgress(uploader: TusUploader): Promise<void> {
+    const state = uploader.getState();
+    const uploadUrl = uploader.getCurrentUploadUrl();
+    
+    if (uploadUrl && state.progress.bytesUploaded > 0) {
+      // Update the stored file handle with current progress
+      const storedHandle = this.unfinishedUploads.get(state.fileId);
+      if (storedHandle) {
+        const updatedHandle: StoredFileHandle = {
+          ...storedHandle,
+          tusUploadUrl: uploadUrl,
+          bytesUploaded: state.progress.bytesUploaded,
+        };
+        this.unfinishedUploads.set(state.fileId, updatedHandle);
+        await this.fileHandleStore.updateFileHandleProgress(state.fileId, uploadUrl, state.progress.bytesUploaded);
+      }
+    }
   }
 
   private async processQueue(): Promise<void> {
@@ -160,6 +212,14 @@ export class UploadQueue {
   }
 
   private handleStateChange(state: UploadState): void {
+    // Update stored progress for paused/uploading states
+    if (state.status === 'uploading' || state.status === 'paused') {
+      const uploader = this.uploaders.get(state.fileId);
+      if (uploader) {
+        this.updateStoredFileHandleProgress(uploader);
+      }
+    }
+    
     this.events.onStateChange?.(state);
   }
 
@@ -172,6 +232,11 @@ export class UploadQueue {
 
   private handleError(fileId: string, error: Error): void {
     this.activeUploads.delete(fileId);
+    // Update stored progress on error for potential resumption
+    const uploader = this.uploaders.get(fileId);
+    if (uploader) {
+      this.updateStoredFileHandleProgress(uploader);
+    }
     this.events.onError?.(fileId, error);
     this.processQueue();
   }
@@ -186,8 +251,10 @@ export class UploadQueue {
   private async getUnfinishedUploadsFromStore(): Promise<void> {
     const fileHandles = await this.fileHandleStore.getAllFileHandles();
     console.log('Found unfinished uploads:', fileHandles.length);
-    
-    this.unfinishedUploads = new Map(fileHandles.map(fileHandle => [fileHandle.id, fileHandle]));
+    console.log('fileHandles', fileHandles);
+
+    this.unfinishedUploads = new Map(fileHandles.filter(fileHandle => !this.activeUploads.has(fileHandle.id)).map(fileHandle => [fileHandle.id, fileHandle]));
+    return;
   }
 
   private async resumeUnfinishedUpload(fileHandleOrId: StoredFileHandle | string): Promise<void> {
@@ -221,14 +288,45 @@ export class UploadQueue {
       await this.fileHandleStore.removeFileHandle(fileHandle.id);
       return;
     }
+    
     console.log('file found', file);
-    await this.addFiles([{
+    
+    // Create TusUploader with previous upload information for resumption
+    const tusOptions: TusUploaderOptions = {
+      previousUploadUrl: fileHandle.tusUploadUrl,
+      previousBytesUploaded: fileHandle.bytesUploaded || 0,
+    };
+    
+    const uploader = new TusUploader({
       id: fileHandle.id,
       file: file,
       fileHandle: fileHandle.handle,
       name: fileHandle.name,
       size: fileHandle.size,
       type: fileHandle.type,
-    }]);
+    }, this.options, {
+      onProgress: this.events.onProgress,
+      onStateChange: (state) => {
+        this.handleStateChange(state);
+      },
+      onComplete: (fileId, tusUrl) => {
+        this.handleComplete(fileId, tusUrl);
+        this.fileHandleStore.removeFileHandle(fileId);
+      },
+      onError: (fileId, error) => {
+        this.handleError(fileId, error);
+      },
+      onCancel: (fileId) => {
+        this.cancelUpload(fileId);
+      }
+    }, tusOptions);
+
+    this.uploaders.set(fileHandle.id, uploader);
+    
+    // If auto-start is enabled, add to queue and start processing
+    if (this.options.autoStart) {
+      this.queue.push(fileHandle.id);
+      this.processQueue();
+    }
   }
 } 

@@ -1,6 +1,11 @@
 import { UploadFile, UploadOptions, UploadEvents, UploadState, UploadProgress } from '../types';
 import { Upload, defaultOptions } from 'tus-js-client';
 
+export interface TusUploaderOptions {
+  previousUploadUrl?: string;
+  previousBytesUploaded?: number;
+}
+
 export class TusUploader {
   private uploadFile: UploadFile;
   private options: UploadOptions;
@@ -10,21 +15,31 @@ export class TusUploader {
   private state: UploadState;
   private previousUploadUrl?: string;
 
-  constructor(uploadFile: UploadFile, options: UploadOptions, events: UploadEvents = {}) {
-    console.log('TusUploader constructor', uploadFile, options, events);
+  constructor(
+    uploadFile: UploadFile, 
+    options: UploadOptions, 
+    events: UploadEvents = {}, 
+    tusOptions?: TusUploaderOptions
+  ) {
+    console.log('TusUploader constructor', uploadFile, options, events, tusOptions);
     this.uploadFile = uploadFile;
     this.options = options;
     this.events = events;
     this.abortController = new AbortController();
+    this.previousUploadUrl = tusOptions?.previousUploadUrl;
+    
+    const initialBytesUploaded = tusOptions?.previousBytesUploaded || 0;
+    const initialPercentage = Math.round((initialBytesUploaded / uploadFile.size) * 100);
+    
     this.state = {
       fileId: uploadFile.id,
-      status: 'pending',
+      status: this.previousUploadUrl ? 'paused' : 'pending',
       file: uploadFile.file,
       progress: {
         fileId: uploadFile.id,
-        bytesUploaded: 0,
+        bytesUploaded: initialBytesUploaded,
         bytesTotal: uploadFile.size,
-        percentage: 0,
+        percentage: initialPercentage,
       },
     };
   }
@@ -59,18 +74,19 @@ export class TusUploader {
   async resume(): Promise<void> {
     if (this.canResume()) {
       console.log(`Resuming upload for file: ${this.uploadFile.name}, previousUrl: ${this.previousUploadUrl}`);
-      // Reset abort controller for new upload attempt
       this.abortController = new AbortController();
       await this.start();
     }
   }
 
   async cancel(): Promise<void> {
+    if (this.state.status === 'cancelled') {
+      return;
+    }
     this.abortController.abort();
     if (this.upload) {
       this.upload.abort();
     }
-    // Clear previous upload URL on cancel
     this.previousUploadUrl = undefined;
     this.updateState({ status: 'cancelled' });
     this.events.onCancel?.(this.uploadFile.id);
@@ -78,6 +94,10 @@ export class TusUploader {
 
   getState(): UploadState {
     return { ...this.state };
+  }
+
+  getCurrentUploadUrl(): string | undefined {
+    return this.upload?.url || this.previousUploadUrl;
   }
 
   canResume(): boolean {
@@ -160,6 +180,7 @@ export class TusUploader {
       });
 
       this.upload = new Upload(this.uploadFile.file, uploadOptions);
+      
       
       // If resuming (we have a previous upload URL), try to find and resume the previous upload
       if (this.previousUploadUrl) {

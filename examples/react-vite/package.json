@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "motion": "^12.23.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "uploadzx": "workspace:*"
@@ -20,4 +21,4 @@
     "typescript": "^5.2.2",
     "vite": "^5.2.0"
   }
-} 
+}

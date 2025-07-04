@@ -29,6 +29,7 @@ export interface UploadOptions {
   retryDelays?: number[];
   metadata?: Record<string, string>;
   headers?: Record<string, string>;
+  onInit?: () => void;
 }
 
 export interface UploadEvents {
@@ -52,4 +53,6 @@ export interface StoredFileHandle {
   type: string;
   handle: FileSystemFileHandle;
   lastModified: number;
+  tusUploadUrl?: string;
+  bytesUploaded?: number;
 } 

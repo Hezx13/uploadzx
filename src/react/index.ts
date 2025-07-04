@@ -3,6 +3,8 @@ export { useUploadzx } from './hooks/useUploadzx';
 export { useUploadState } from './hooks/useUploadState';
 export { useUploadProgress } from './hooks/useUploadProgress';
 export { useFilePicker } from './hooks/useFilePicker';
+export { useUploadItem } from './hooks/useUploadItem';
+export { useQueueActions } from './hooks/useQueueActions';
 export { UploadzxProvider, useUploadzxContext } from './components/UploadzxProvider';
 export { UploadDropzone } from './components/UploadDropzone';
 
