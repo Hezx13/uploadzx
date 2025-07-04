@@ -1,6 +1,6 @@
 {
   "name": "uploadzx",
-  "version": "beta-0.1.0",
+  "version": "0.1.0-beta",
   "description": "Browser-only TypeScript upload library with tus integration for resumable uploads",
   "type": "module",
 
