@@ -1,7 +1,7 @@
 {
   "name": "uploadzx",
-  "version": "1.0.0",
-  "description": "Browser-only TypeScript upload library with tus integration",
+  "version": "beta-0.1.0",
+  "description": "Browser-only TypeScript upload library with tus integration for resumable uploads",
   "type": "module",
 
   "main": "dist/index.cjs",
@@ -20,7 +20,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsup",
@@ -30,11 +32,35 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "example:react": "cd examples/react-vite && pnpm dev",
     "example:vanilla": "cd examples/vanilla-vite && pnpm dev",
-    "examples:install": "pnpm install && pnpm build"
+    "examples:install": "pnpm install && pnpm build",
+    "prepublishOnly": "pnpm run build"
   },
-  "keywords": ["upload", "tus", "resumable", "browser", "typescript"],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "upload",
+    "tus",
+    "resumable",
+    "browser",
+    "typescript",
+    "file-upload",
+    "resumable-upload",
+    "javascript",
+    "react",
+    "indexeddb",
+    "file-system-access-api"
+  ],
+  "author": "Hezx13",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hezx13/uploadzx.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Hezx13/uploadzx/issues"
+  },
+  "homepage": "https://github.com/Hezx13/uploadzx#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "devDependencies": {
     "@types/node": "^24.0.8",
     "@types/react": "^18.2.0",
