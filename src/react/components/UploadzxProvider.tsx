@@ -13,11 +13,7 @@ interface UploadzxProviderProps {
 export function UploadzxProvider({ children, options }: UploadzxProviderProps) {
   const uploadzxValue = useUploadzx(options);
 
-  return (
-    <UploadzxContext.Provider value={uploadzxValue}>
-      {children}
-    </UploadzxContext.Provider>
-  );
+  return <UploadzxContext.Provider value={uploadzxValue}>{children}</UploadzxContext.Provider>;
 }
 
 export function useUploadzxContext() {
@@ -26,4 +22,4 @@ export function useUploadzxContext() {
     throw new Error('useUploadzxContext must be used within UploadzxProvider');
   }
   return context;
-} 
+}

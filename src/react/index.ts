@@ -16,6 +16,6 @@ export type {
   UploadOptions,
   UploadEvents,
   FilePickerOptions,
-  StoredFileHandle
+  StoredFileHandle,
 } from '../types';
-export type { QueueOptions } from '../core/UploadQueue'; 
+export type { QueueOptions } from '../core/UploadQueue';

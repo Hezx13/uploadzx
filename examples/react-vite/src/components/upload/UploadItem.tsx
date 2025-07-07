@@ -1,7 +1,8 @@
 import { memo } from 'react'
 import { motion } from 'motion/react'
-import { useUploadItem, type UploadState } from 'uploadzx/react'
+import { UploadProgress, useUploadItem, type UploadState } from 'uploadzx/react'
 import { formatFileSize, getStatusColor } from '../../utils/formatters'
+import { formatUploadSpeed } from 'uploadzx'
 
 // Upload item controls component
 const UploadItemControls = memo(({ 
@@ -62,7 +63,7 @@ const UploadItemProgress = memo(({
   progress, 
   status 
 }: { 
-  progress?: { percentage: number; bytesUploaded: number; bytesTotal: number }
+  progress?: UploadProgress
   status: string 
 }) => {
   if (!progress) return null
@@ -96,6 +97,7 @@ const UploadItemProgress = memo(({
       }}>
         <span>{formatFileSize(progress.bytesUploaded)} / {formatFileSize(progress.bytesTotal)}</span>
         <span>{progress.percentage.toFixed(1)}%</span>
+        <span>{formatUploadSpeed(progress.bytesPerSecond)}</span>
       </div>
     </div>
   )
@@ -162,8 +164,7 @@ export const UploadItem = memo(({ fileId, state }: { fileId: string; state: Uplo
     canPause, 
     canResume, 
     canCancel, 
-    progressPercentage 
-  } = useUploadItem(fileId, state)
+  } = useUploadItem(fileId)
 
   return (
     <motion.div

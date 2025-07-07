@@ -12,4 +12,4 @@ export function useFilePicker(options: FilePickerOptions = {}) {
   return {
     pickFiles,
   };
-} 
+}

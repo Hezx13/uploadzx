@@ -8,10 +8,13 @@ function App() {
         endpoint: 'https://tusd.tusdemo.net/files/',
         chunkSize: 1024 * 1024, // 1MB chunks
         autoStart: true,
+        tusOptions: {
+          trackSpeed: true,
+        },
         filePickerOptions: {
           useFileSystemAccess: true,
         },
-        maxConcurrent: 3,
+        maxConcurrent: 1,
         onProgress: (progress) => {
           console.log('Upload progress:', progress)
         },

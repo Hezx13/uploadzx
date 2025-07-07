@@ -6,10 +6,18 @@ export class FilePicker {
 
   constructor(options: FilePickerOptions = {}) {
     this.options = {
-      multiple: false,
+      multiple: true,
       useFileSystemAccess: false,
       ...options,
     };
+  }
+
+  private generateUUID(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c == 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
   }
 
   async pickFiles(): Promise<UploadFile[]> {
@@ -28,20 +36,22 @@ export class FilePicker {
     try {
       const fileHandles = await (window as any).showOpenFilePicker({
         multiple: this.options.multiple,
-        types: this.options.accept ? [
-          {
-            description: 'Files',
-            accept: { '*/*': [this.options.accept] },
-          },
-        ] : undefined,
+        types: this.options.accept
+          ? [
+              {
+                description: 'Files',
+                accept: { '*/*': [this.options.accept] },
+              },
+            ]
+          : undefined,
       });
 
       const uploadFiles: UploadFile[] = [];
-      
+
       for (const fileHandle of fileHandles) {
         const file = await fileHandle.getFile();
         uploadFiles.push({
-          id: crypto.randomUUID(),
+          id: this.generateUUID(),
           file,
           fileHandle,
           name: file.name,
@@ -60,23 +70,23 @@ export class FilePicker {
   }
 
   private async pickWithInputAndMockHandles(): Promise<UploadFile[]> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       const input = document.createElement('input');
       input.type = 'file';
       input.multiple = this.options.multiple || false;
-      
+
       if (this.options.accept) {
         input.accept = this.options.accept;
       }
 
       input.onchange = () => {
         const files = Array.from(input.files || []);
-        const uploadFiles: UploadFile[] = files.map((file) => {
+        const uploadFiles: UploadFile[] = files.map(file => {
           // Create a mock FileSystemFileHandle for Safari
           const mockHandle = this.createMockFileHandle(file);
-          
+
           return {
-            id: crypto.randomUUID(),
+            id: this.generateUUID(),
             file,
             fileHandle: mockHandle,
             name: file.name,
@@ -109,19 +119,19 @@ export class FilePicker {
   }
 
   private async pickWithInput(): Promise<UploadFile[]> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       const input = document.createElement('input');
       input.type = 'file';
       input.multiple = this.options.multiple || false;
-      
+
       if (this.options.accept) {
         input.accept = this.options.accept;
       }
 
       input.onchange = () => {
         const files = Array.from(input.files || []);
-        const uploadFiles: UploadFile[] = files.map((file) => ({
-          id: crypto.randomUUID(),
+        const uploadFiles: UploadFile[] = files.map(file => ({
+          id: this.generateUUID(),
           file,
           name: file.name,
           size: file.size,
@@ -133,4 +143,4 @@ export class FilePicker {
       input.click();
     });
   }
-} 
+}

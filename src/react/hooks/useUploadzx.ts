@@ -18,65 +18,79 @@ export function useUploadzx(options: UseUploadzxOptions) {
   const [unfinishedUploads, setUnfinishedUploads] = useState<StoredFileHandle[]>([]);
   const uploadzxRef = useRef<Uploadzx | null>(null);
   const mountedRef = useRef<boolean>(true);
-  const events: UploadEvents = useMemo(() => ({
-    onProgress: options.onProgress,
-    onStateChange: (state: UploadState) => {
-      if (mountedRef.current) {
-        setUploadStates((prev: Record<string, UploadState>) => ({ ...prev, [state.fileId]: state }));
-        if (unfinishedUploads.find(upload => upload.id === state.fileId)) {
-          setUnfinishedUploads((prev) => {
-            const newUnfinishedUploads = prev.filter(upload => upload.id !== state.fileId);
-            return newUnfinishedUploads;
-          });
+  const events: UploadEvents = useMemo(
+    () => ({
+      onProgress: options.onProgress,
+      onStateChange: (state: UploadState) => {
+        if (mountedRef.current) {
+          setUploadStates((prev: Record<string, UploadState>) => ({
+            ...prev,
+            [state.fileId]: state,
+          }));
+          if (unfinishedUploads.find(upload => upload.id === state.fileId)) {
+            setUnfinishedUploads(prev => {
+              const newUnfinishedUploads = prev.filter(upload => upload.id !== state.fileId);
+              return newUnfinishedUploads;
+            });
+          }
+          options.onStateChange?.(state);
         }
-        options.onStateChange?.(state);
-      }
-    },
-    onComplete: options.onComplete,
-    onError: options.onError,
-    onCancel: options.onCancel,
-  }), [options.onProgress, options.onStateChange, options.onComplete, options.onError, options.onCancel]);
+      },
+      onComplete: options.onComplete,
+      onError: options.onError,
+      onCancel: options.onCancel,
+    }),
+    [
+      options.onProgress,
+      options.onStateChange,
+      options.onComplete,
+      options.onError,
+      options.onCancel,
+    ]
+  );
 
   useEffect(() => {
     // fix for strict mode
     mountedRef.current = true;
-    
+
     const initializeUploadzx = async () => {
       if (uploadzxRef.current) {
         return;
       }
 
-      uploadzxRef.current = new Uploadzx({
-        ...options,
-        onInit: async () => {
-          console.log('onInit prop');
-          if (mountedRef.current) {
-            setIsInitialized(true);
-            
-            // Fetch unfinished uploads after initialization
-            if (uploadzxRef.current) {
-              try {
-                const uploads = await uploadzxRef.current.getUnfinishedUploads();
-                if (mountedRef.current) {
-                  console.log('uploads', uploads);
-                  setUnfinishedUploads(uploads);
-                  
-                  const stats = uploadzxRef.current.getQueueStats();
-                  setQueueStats(stats);
+      uploadzxRef.current = new Uploadzx(
+        {
+          ...options,
+          onInit: async () => {
+            console.log('onInit prop');
+            if (mountedRef.current) {
+              setIsInitialized(true);
+
+              // Fetch unfinished uploads after initialization
+              if (uploadzxRef.current) {
+                try {
+                  const uploads = await uploadzxRef.current.getUnfinishedUploads();
+                  if (mountedRef.current) {
+                    console.log('uploads', uploads);
+                    setUnfinishedUploads(uploads);
+
+                    const stats = uploadzxRef.current.getQueueStats();
+                    setQueueStats(stats);
+                  }
+                } catch (error) {
+                  console.error('Error fetching unfinished uploads:', error);
                 }
-              } catch (error) {
-                console.error('Error fetching unfinished uploads:', error);
               }
             }
-          }
-          options.onInit?.();
+            options.onInit?.();
+          },
         },
-      }, events);
+        events
+      );
     };
 
     initializeUploadzx();
 
-    // Cleanup function
     return () => {
       mountedRef.current = false;
       if (uploadzxRef.current) {
@@ -87,30 +101,7 @@ export function useUploadzx(options: UseUploadzxOptions) {
       setQueueStats({ queueLength: 0, activeCount: 0 });
       setUnfinishedUploads([]);
     };
-  }, []); // Empty dependency array - only run once per mount
-
-  useEffect(() => {
-    console.log('mount');
-    return () => {
-      console.log('unmount');
-    };
   }, []);
-
-  useEffect(() => {
-    console.log('isInitialized', isInitialized);
-  }, [isInitialized]);
-
-  useEffect(() => {
-    console.log('uploadStates', uploadStates);
-  }, [uploadStates]);
-
-  useEffect(() => {
-    console.log('queueStats', queueStats);
-  }, [queueStats]);
-
-  useEffect(() => {
-    console.log('unfinishedUploads', unfinishedUploads);
-  }, [unfinishedUploads]);
 
   const pickAndUploadFiles = useCallback(async () => {
     if (!uploadzxRef.current) return;
@@ -181,13 +172,13 @@ export function useUploadzx(options: UseUploadzxOptions) {
   const restoreUnfinishedUpload = useCallback(async (fileHandleOrId: StoredFileHandle | string) => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.restoreUnfinishedUpload(fileHandleOrId);
-    setUnfinishedUploads((prev) => {
+    setUnfinishedUploads(prev => {
       if (typeof fileHandleOrId === 'string') {
         const newUnfinishedUploads = prev.filter(upload => upload.id !== fileHandleOrId);
         return newUnfinishedUploads;
       }
-        const newUnfinishedUploads = prev.filter(upload => upload.id !== fileHandleOrId.id);
-        return newUnfinishedUploads;
+      const newUnfinishedUploads = prev.filter(upload => upload.id !== fileHandleOrId.id);
+      return newUnfinishedUploads;
     });
   }, []);
 
@@ -212,7 +203,26 @@ export function useUploadzx(options: UseUploadzxOptions) {
       restoreUnfinishedUpload,
       clearCompletedUploads,
     };
-  },  [isInitialized, uploadStates, queueStats, unfinishedUploads, pickAndUploadFiles, pickFiles, addFiles, startUploads, pauseAll, resumeAll, cancelAll, pauseUpload, resumeUpload, cancelUpload, getUploadState, getAllStates, restoreUnfinishedUpload, clearCompletedUploads]);
+  }, [
+    isInitialized,
+    uploadStates,
+    queueStats,
+    unfinishedUploads,
+    pickAndUploadFiles,
+    pickFiles,
+    addFiles,
+    startUploads,
+    pauseAll,
+    resumeAll,
+    cancelAll,
+    pauseUpload,
+    resumeUpload,
+    cancelUpload,
+    getUploadState,
+    getAllStates,
+    restoreUnfinishedUpload,
+    clearCompletedUploads,
+  ]);
 
   return value;
 }

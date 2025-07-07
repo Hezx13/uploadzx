@@ -17,4 +17,4 @@ export function useUploadProgress(
   }, [uploadStates, fileId]);
 
   return progress;
-} 
+}

@@ -1,15 +1,11 @@
 import { useCallback, useMemo } from 'react';
 import { useUploadzxContext } from '../components/UploadzxProvider';
-import type { UploadState } from '../../types';
+import { useUploadState } from './useUploadState';
 
-/**
- * Custom hook for individual upload item management
- * Optimizes re-renders by memoizing callbacks and computed values
- */
-export function useUploadItem(fileId: string, state: UploadState) {
+export function useUploadItem(fileId: string) {
+  const state = useUploadState(fileId);
   const { pauseUpload, resumeUpload, cancelUpload } = useUploadzxContext();
 
-  // Memoize action callbacks to prevent unnecessary re-renders
   const handlePause = useCallback(() => {
     pauseUpload(fileId);
   }, [pauseUpload, fileId]);
@@ -22,18 +18,22 @@ export function useUploadItem(fileId: string, state: UploadState) {
     cancelUpload(fileId);
   }, [cancelUpload, fileId]);
 
-  // Memoize computed values
-  const canPause = useMemo(() => state.status === 'uploading', [state.status]);
-  const canResume = useMemo(() => state.status === 'paused', [state.status]);
-  const canCancel = useMemo(() => 
-    state.status !== 'completed' && state.status !== 'cancelled', 
-    [state.status]
-  );
+  const canPause = useMemo(() => {
+    if (!state) return false;
+    return state.status === 'uploading';
+  }, [state?.status]);
 
-  const progressPercentage = useMemo(() => 
-    state.progress?.percentage?.toFixed(1) || '0.0', 
-    [state.progress?.percentage]
-  );
+  const canResume = useMemo(() => {
+    if (!state) return false;
+    return state.status === 'paused';
+  }, [state?.status]);
+
+  const canCancel = useMemo(() => {
+    if (!state) return false;
+    return state.status !== 'completed' && state.status !== 'cancelled';
+  }, [state?.status]);
+
+  const progress = useMemo(() => state?.progress, [state?.progress?.bytesUploaded]);
 
   return {
     handlePause,
@@ -42,6 +42,6 @@ export function useUploadItem(fileId: string, state: UploadState) {
     canPause,
     canResume,
     canCancel,
-    progressPercentage,
+    progress,
   };
-} 
+}

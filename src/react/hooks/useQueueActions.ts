@@ -1,20 +1,9 @@
 import { useCallback, useMemo } from 'react';
 import { useUploadzxContext } from '../components/UploadzxProvider';
 
-/**
- * Custom hook for queue management actions
- * Provides memoized queue control functions and computed states
- */
 export function useQueueActions() {
-  const { 
-    pauseAll, 
-    resumeAll, 
-    cancelAll, 
-    queueStats,
-    pickAndUploadFiles 
-  } = useUploadzxContext();
+  const { pauseAll, resumeAll, cancelAll, queueStats, pickAndUploadFiles } = useUploadzxContext();
 
-  // Memoize action callbacks
   const handlePauseAll = useCallback(() => {
     pauseAll();
   }, [pauseAll]);
@@ -31,13 +20,12 @@ export function useQueueActions() {
     pickAndUploadFiles();
   }, [pickAndUploadFiles]);
 
-  // Memoize computed states
   const canPauseAll = useMemo(() => queueStats.activeCount > 0, [queueStats.activeCount]);
   const hasActiveUploads = useMemo(() => queueStats.activeCount > 0, [queueStats.activeCount]);
   const hasQueuedUploads = useMemo(() => queueStats.queueLength > 0, [queueStats.queueLength]);
 
-  const queueStatsText = useMemo(() => 
-    `${queueStats.queueLength} in queue, ${queueStats.activeCount} active`,
+  const queueStatsText = useMemo(
+    () => `${queueStats.queueLength} in queue, ${queueStats.activeCount} active`,
     [queueStats.queueLength, queueStats.activeCount]
   );
 
@@ -52,4 +40,4 @@ export function useQueueActions() {
     queueStatsText,
     queueStats,
   };
-} 
+}

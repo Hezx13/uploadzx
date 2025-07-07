@@ -14,7 +14,7 @@ interface SafariStoredFile {
 
 export class FileHandleStore {
   private dbName = 'uploadzx-filehandles';
-  private version = 2; // Increment version for Safari fallback support
+  private version = 2; // increment this for safari fallback support
   private storeName = 'filehandles';
   private safariStoreName = 'safari-files';
   private isFileSystemAccessSupported = isFileSystemAccessSupported();
@@ -28,13 +28,13 @@ export class FileHandleStore {
 
       request.onupgradeneeded = () => {
         const db = request.result;
-        
+
         // Original store for File System Access API
         if (!db.objectStoreNames.contains(this.storeName)) {
           const store = db.createObjectStore(this.storeName, { keyPath: 'id' });
           store.createIndex('name', 'name', { unique: false });
         }
-        
+
         // Safari fallback store for actual file data
         if (!db.objectStoreNames.contains(this.safariStoreName)) {
           const safariStore = db.createObjectStore(this.safariStoreName, { keyPath: 'id' });
@@ -57,7 +57,7 @@ export class FileHandleStore {
   private async storeNativeFileHandle(fileHandle: FileSystemFileHandle, id: string): Promise<void> {
     const db = await this.openDB();
     const file = await fileHandle.getFile();
-    
+
     const storedHandle: StoredFileHandle = {
       id,
       name: file.name,
@@ -80,7 +80,7 @@ export class FileHandleStore {
   private async storeSafariFile(file: File, id: string): Promise<void> {
     const db = await this.openDB();
     const data = await file.arrayBuffer();
-    
+
     const safariFile: SafariStoredFile = {
       id,
       name: file.name,
@@ -160,7 +160,6 @@ export class FileHandleStore {
       lastModified: safariFile.lastModified,
     });
 
-    // Create a mock FileSystemFileHandle that works with Safari
     const mockHandle = {
       kind: 'file' as const,
       name: safariFile.name,
@@ -170,7 +169,6 @@ export class FileHandleStore {
       createWritable: async () => {
         throw new Error('Write operations not supported in Safari fallback mode');
       },
-      // Add other required properties/methods
       isSameEntry: async () => false,
     } as FileSystemFileHandle;
 
@@ -243,7 +241,11 @@ export class FileHandleStore {
     });
   }
 
-  async updateFileHandleProgress(id: string, tusUploadUrl: string, bytesUploaded: number): Promise<void> {
+  async updateFileHandleProgress(
+    id: string,
+    tusUploadUrl: string,
+    bytesUploaded: number
+  ): Promise<void> {
     if (this.isFileSystemAccessSupported) {
       return this.updateNativeFileHandleProgress(id, tusUploadUrl, bytesUploaded);
     } else {
@@ -251,7 +253,11 @@ export class FileHandleStore {
     }
   }
 
-  private async updateNativeFileHandleProgress(id: string, tusUploadUrl: string, bytesUploaded: number): Promise<void> {
+  private async updateNativeFileHandleProgress(
+    id: string,
+    tusUploadUrl: string,
+    bytesUploaded: number
+  ): Promise<void> {
     const db = await this.openDB();
 
     return new Promise((resolve, reject) => {
@@ -265,7 +271,7 @@ export class FileHandleStore {
         if (storedHandle) {
           storedHandle.tusUploadUrl = tusUploadUrl;
           storedHandle.bytesUploaded = bytesUploaded;
-          
+
           const putRequest = store.put(storedHandle);
           putRequest.onerror = () => reject(putRequest.error);
           putRequest.onsuccess = () => resolve();
@@ -276,7 +282,11 @@ export class FileHandleStore {
     });
   }
 
-  private async updateSafariFileHandleProgress(id: string, tusUploadUrl: string, bytesUploaded: number): Promise<void> {
+  private async updateSafariFileHandleProgress(
+    id: string,
+    tusUploadUrl: string,
+    bytesUploaded: number
+  ): Promise<void> {
     const db = await this.openDB();
 
     return new Promise((resolve, reject) => {
@@ -290,7 +300,7 @@ export class FileHandleStore {
         if (safariFile) {
           safariFile.tusUploadUrl = tusUploadUrl;
           safariFile.bytesUploaded = bytesUploaded;
-          
+
           const putRequest = store.put(safariFile);
           putRequest.onerror = () => reject(putRequest.error);
           putRequest.onsuccess = () => resolve();
@@ -324,7 +334,7 @@ export class FileHandleStore {
       return false;
     }
   }
-  
+
   async getFileFromHandleByID(id: string): Promise<File | null> {
     console.log('getFileFromHandleByID', id);
     if (!this.isFileSystemAccessSupported) {
@@ -342,8 +352,7 @@ export class FileHandleStore {
       try {
         console.log('requesting permission', fileHandle.id);
         await (fileHandle.handle as any).requestPermission({ mode: 'read' });
-      }
-      catch {
+      } catch {
         console.log('error requesting permission', fileHandle.id);
         await this.removeFileHandle(fileHandle.id);
         return null;
@@ -352,8 +361,7 @@ export class FileHandleStore {
     try {
       const file = await fileHandle.handle.getFile();
       return file;
-    }
-    catch (error) {
+    } catch (error) {
       return null;
     }
   }
@@ -386,13 +394,13 @@ export class FileHandleStore {
   async clear(): Promise<void> {
     console.log('clear');
     const db = await this.openDB();
-    
-    const storeNames = this.isFileSystemAccessSupported 
-      ? [this.storeName] 
+
+    const storeNames = this.isFileSystemAccessSupported
+      ? [this.storeName]
       : [this.storeName, this.safariStoreName]; // Clear both stores to be safe
-    
+
     const transaction = db.transaction(storeNames, 'readwrite');
-    
+
     storeNames.forEach(storeName => {
       if (db.objectStoreNames.contains(storeName)) {
         const store = transaction.objectStore(storeName);
@@ -400,4 +408,4 @@ export class FileHandleStore {
       }
     });
   }
-} 
+}

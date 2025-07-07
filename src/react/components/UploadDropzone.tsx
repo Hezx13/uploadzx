@@ -25,13 +25,16 @@ export function UploadDropzone({
   const [isDragActive, setIsDragActive] = useState(false);
   const { addFiles, pickAndUploadFiles } = useUploadzxContext();
 
-  const handleDragEnter = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!disabled) {
-      setIsDragActive(true);
-    }
-  }, [disabled]);
+  const handleDragEnter = useCallback(
+    (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!disabled) {
+        setIsDragActive(true);
+      }
+    },
+    [disabled]
+  );
 
   const handleDragLeave = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -45,51 +48,54 @@ export function UploadDropzone({
     setIsDragActive(true);
   }, []);
 
-  const handleDrop = useCallback(async (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(false);
+  const handleDrop = useCallback(
+    async (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragActive(false);
 
-    if (disabled) return;
+      if (disabled) return;
 
-    try {
-      // Extract files and their handles from the drag event
-      const fileHandlePairs = await getFilesFromDragEvent(e);
-      
-      if (fileHandlePairs.length > 0) {
-        const uploadFiles: UploadFile[] = fileHandlePairs.map(({ file, handle }) => ({
-          id: generateFileId(),
-          file,
-          fileHandle: handle,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        }));
+      try {
+        // Extract files and their handles from the drag event
+        const fileHandlePairs = await getFilesFromDragEvent(e);
 
-        console.log(`Dropped ${uploadFiles.length} files with handles:`, uploadFiles);
-        
-        onFilesDrop?.(uploadFiles);
-        await addFiles(uploadFiles);
+        if (fileHandlePairs.length > 0) {
+          const uploadFiles: UploadFile[] = fileHandlePairs.map(({ file, handle }) => ({
+            id: generateFileId(),
+            file,
+            fileHandle: handle,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          }));
+
+          console.log(`Dropped ${uploadFiles.length} files with handles:`, uploadFiles);
+
+          onFilesDrop?.(uploadFiles);
+          await addFiles(uploadFiles);
+        }
+      } catch (error) {
+        console.error('Error processing dropped files:', error);
+
+        // Fallback to the old method if the new one fails
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) {
+          const uploadFiles: UploadFile[] = files.map((file: File) => ({
+            id: generateFileId(),
+            file,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          }));
+
+          onFilesDrop?.(uploadFiles);
+          await addFiles(uploadFiles);
+        }
       }
-    } catch (error) {
-      console.error('Error processing dropped files:', error);
-      
-      // Fallback to the old method if the new one fails
-      const files = Array.from(e.dataTransfer.files);
-      if (files.length > 0) {
-        const uploadFiles: UploadFile[] = files.map((file: File) => ({
-          id: generateFileId(),
-          file,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        }));
-
-        onFilesDrop?.(uploadFiles);
-        await addFiles(uploadFiles);
-      }
-    }
-  }, [disabled, onFilesDrop, addFiles]);
+    },
+    [disabled, onFilesDrop, addFiles]
+  );
 
   const handleClick = useCallback(() => {
     pickAndUploadFiles();
@@ -109,4 +115,4 @@ export function UploadDropzone({
       {children}
     </div>
   );
-} 
+}

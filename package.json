@@ -1,6 +1,6 @@
 {
   "name": "uploadzx",
-  "version": "0.1.0-beta",
+  "version": "0.1.1",
   "description": "Browser-only TypeScript upload library with tus integration for resumable uploads",
   "type": "module",
 
@@ -33,7 +33,9 @@
     "example:react": "cd examples/react-vite && pnpm dev",
     "example:vanilla": "cd examples/vanilla-vite && pnpm dev",
     "examples:install": "pnpm install && pnpm build",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run build",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
   },
   "keywords": [
     "upload",
@@ -64,6 +66,7 @@
   "devDependencies": {
     "@types/node": "^24.0.8",
     "@types/react": "^18.2.0",
+    "prettier": "^3.4.2",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3"
   },

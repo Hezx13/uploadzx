@@ -7,19 +7,39 @@ declare global {
 
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
-  
+
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+export function formatUploadSpeed(bytesPerSecond: number): string {
+  if (bytesPerSecond === 0) return '0 B/s';
+
+  const k = 1024;
+  const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+  const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
+
+  // Ensure we don't go beyond our sizes array
+  const sizeIndex = Math.min(i, sizes.length - 1);
+  const value = bytesPerSecond / Math.pow(k, sizeIndex);
+
+  // Use appropriate decimal places based on size
+  const decimals = sizeIndex === 0 ? 0 : sizeIndex === 1 ? 1 : 2;
+
+  return parseFloat(value.toFixed(decimals)) + ' ' + sizes[sizeIndex];
 }
 
 export function generateFileId(): string {
   return crypto.randomUUID();
 }
 
-export function validateFile(file: File, options: { maxSize?: number; allowedTypes?: string[] } = {}): string | null {
+export function validateFile(
+  file: File,
+  options: { maxSize?: number; allowedTypes?: string[] } = {}
+): string | null {
   if (options.maxSize && file.size > options.maxSize) {
     return `File size exceeds maximum of ${formatFileSize(options.maxSize)}`;
   }
@@ -42,26 +62,34 @@ export function validateFile(file: File, options: { maxSize?: number; allowedTyp
 }
 
 export function isFileSystemAccessSupported(): boolean {
-  return typeof window !== 'undefined' && 
-         'showOpenFilePicker' in window && 
-         'showSaveFilePicker' in window && 
-         'showDirectoryPicker' in window;
+  return (
+    typeof window !== 'undefined' &&
+    'showOpenFilePicker' in window &&
+    'showSaveFilePicker' in window &&
+    'showDirectoryPicker' in window
+  );
 }
 
 export function isSafari(): boolean {
   if (typeof window === 'undefined') return false;
-  
+
   const userAgent = window.navigator.userAgent;
   const vendor = window.navigator.vendor;
-  
+
   // Check for Safari (but not Chrome, which also has Safari in user agent)
-  return /Safari/.test(userAgent) && 
-         /Apple Computer/.test(vendor) && 
-         !/Chrome/.test(userAgent) && 
-         !/Chromium/.test(userAgent);
+  return (
+    /Safari/.test(userAgent) &&
+    /Apple Computer/.test(vendor) &&
+    !/Chrome/.test(userAgent) &&
+    !/Chromium/.test(userAgent)
+  );
 }
 
-export function getBrowserInfo(): { name: string; version: string; isFileSystemAccessSupported: boolean } {
+export function getBrowserInfo(): {
+  name: string;
+  version: string;
+  isFileSystemAccessSupported: boolean;
+} {
   if (typeof window === 'undefined') {
     return { name: 'Unknown', version: 'Unknown', isFileSystemAccessSupported: false };
   }
@@ -118,7 +146,9 @@ function createMockFileHandle(file: File): FileSystemFileHandle {
  * Extracts file handles from drag and drop DataTransferItems
  * Falls back to creating mock handles for Safari
  */
-export async function getFileHandlesFromDataTransfer(dataTransfer: DataTransfer): Promise<{ file: File; handle?: FileSystemFileHandle }[]> {
+export async function getFileHandlesFromDataTransfer(
+  dataTransfer: DataTransfer
+): Promise<{ file: File; handle?: FileSystemFileHandle }[]> {
   const items = Array.from(dataTransfer.items).filter(item => item.kind === 'file');
   const results: { file: File; handle?: FileSystemFileHandle }[] = [];
 
@@ -153,7 +183,9 @@ export async function getFileHandlesFromDataTransfer(dataTransfer: DataTransfer)
  * Automatically handles Safari fallback
  * Works with both React DragEvent and native DragEvent
  */
-export async function getFilesFromDragEvent(event: { dataTransfer: DataTransfer | null }): Promise<{ file: File; handle?: FileSystemFileHandle }[]> {
+export async function getFilesFromDragEvent(event: {
+  dataTransfer: DataTransfer | null;
+}): Promise<{ file: File; handle?: FileSystemFileHandle }[]> {
   if (!event.dataTransfer) {
     return [];
   }
@@ -165,14 +197,14 @@ export function debounce<T extends (...args: any[]) => any>(
   wait: number
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
-  
+
   return (...args: Parameters<T>) => {
     if (timeout) {
       clearTimeout(timeout);
     }
-    
+
     timeout = setTimeout(() => {
       func(...args);
     }, wait);
   };
-} 
+}

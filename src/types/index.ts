@@ -12,6 +12,7 @@ export interface UploadProgress {
   bytesUploaded: number;
   bytesTotal: number;
   percentage: number;
+  bytesPerSecond: number;
 }
 
 export interface UploadState {
@@ -55,4 +56,4 @@ export interface StoredFileHandle {
   lastModified: number;
   tusUploadUrl?: string;
   bytesUploaded?: number;
-} 
+}
