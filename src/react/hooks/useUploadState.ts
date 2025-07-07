@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { UploadState } from '../../types';
-import { useUploadzxContext } from '../components/UploadzxProvider';
+import { useUploadStates } from '../components/UploadzxProvider';
 
 export function useUploadState(fileId: string): UploadState | null {
-  const { uploadStates } = useUploadzxContext();
+  const { uploadStates } = useUploadStates();
   const [state, setState] = useState<UploadState | null>(null);
 
   useEffect(() => {

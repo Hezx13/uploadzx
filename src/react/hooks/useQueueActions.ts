@@ -1,8 +1,9 @@
 import { useCallback, useMemo } from 'react';
-import { useUploadzxContext } from '../components/UploadzxProvider';
+import { useUploadzxActions, useQueueStats } from '../components/UploadzxProvider';
 
 export function useQueueActions() {
-  const { pauseAll, resumeAll, cancelAll, queueStats, pickAndUploadFiles } = useUploadzxContext();
+  const { pauseAll, resumeAll, cancelAll, pickAndUploadFiles } = useUploadzxActions();
+  const { queueStats } = useQueueStats();
 
   const handlePauseAll = useCallback(() => {
     pauseAll();

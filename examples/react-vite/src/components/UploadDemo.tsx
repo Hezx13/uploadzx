@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { useUploadzxContext } from 'uploadzx/react'
+import { useUploadzxState } from 'uploadzx/react'
 import { 
   TabNavigation, 
   FilePickerControls, 
@@ -13,7 +13,7 @@ import { useUploadPopup } from '../hooks/useUploadPopup'
 
 export const UploadDemo = () => {
   const [activeTab, setActiveTab] = useState<TabType>('picker')
-  const { isInitialized } = useUploadzxContext()
+  const { isInitialized } = useUploadzxState();
   const { isVisible, togglePopup } = useUploadPopup()
 
   const handleTabChange = useCallback((tab: TabType) => {

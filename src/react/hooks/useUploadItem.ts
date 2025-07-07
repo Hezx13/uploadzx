@@ -1,10 +1,10 @@
 import { useCallback, useMemo } from 'react';
-import { useUploadzxContext } from '../components/UploadzxProvider';
+import { useUploadzxActions } from '../components/UploadzxProvider';
 import { useUploadState } from './useUploadState';
 
 export function useUploadItem(fileId: string) {
   const state = useUploadState(fileId);
-  const { pauseUpload, resumeUpload, cancelUpload } = useUploadzxContext();
+  const { pauseUpload, resumeUpload, cancelUpload } = useUploadzxActions();
 
   const handlePause = useCallback(() => {
     pauseUpload(fileId);

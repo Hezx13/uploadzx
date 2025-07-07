@@ -106,68 +106,68 @@ export function useUploadzx(options: UseUploadzxOptions) {
   const pickAndUploadFiles = useCallback(async () => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.pickAndUploadFiles();
-  }, []);
+  }, [uploadzxRef.current]);
 
   const pickFiles = useCallback(async () => {
     if (!uploadzxRef.current) return [];
     return await uploadzxRef.current.pickFiles();
-  }, []);
+  }, [uploadzxRef.current]);
 
   const addFiles = useCallback(async (files: UploadFile[]) => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.addFiles(files);
-  }, []);
+  }, [uploadzxRef.current]);
 
   const startUploads = useCallback(async () => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.startUploads();
-  }, []);
+  }, [uploadzxRef.current]);
 
   const pauseAll = useCallback(async () => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.pauseAll();
-  }, []);
+  }, [uploadzxRef.current]);
 
   const resumeAll = useCallback(async () => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.resumeAll();
-  }, []);
+  }, [uploadzxRef.current]);
 
   const cancelAll = useCallback(async () => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.cancelAll();
-  }, []);
+  }, [uploadzxRef.current]);
 
   const pauseUpload = useCallback(async (fileId: string) => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.pauseUpload(fileId);
-  }, []);
+  }, [uploadzxRef.current]);
 
   const resumeUpload = useCallback(async (fileId: string) => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.resumeUpload(fileId);
-  }, []);
+  }, [uploadzxRef.current]);
 
   const cancelUpload = useCallback(async (fileId: string) => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.cancelUpload(fileId);
-  }, []);
+  }, [uploadzxRef.current]);
 
   const getUploadState = useCallback((fileId: string) => {
     if (!uploadzxRef.current) return null;
     return uploadzxRef.current.getUploadState(fileId);
-  }, []);
+  }, [uploadzxRef.current]);
 
   const getAllStates = useCallback(() => {
     if (!uploadzxRef.current) return {};
     return uploadzxRef.current.getAllStates();
-  }, []);
+  }, [uploadzxRef.current]);
 
   const clearCompletedUploads = useCallback(() => {
     if (!uploadzxRef.current) return;
     uploadzxRef.current.clearCompletedUploads();
     setUploadStates({});
-  }, []);
+  }, [uploadzxRef.current]);
 
   const restoreUnfinishedUpload = useCallback(async (fileHandleOrId: StoredFileHandle | string) => {
     if (!uploadzxRef.current) return;
@@ -180,7 +180,7 @@ export function useUploadzx(options: UseUploadzxOptions) {
       const newUnfinishedUploads = prev.filter(upload => upload.id !== fileHandleOrId.id);
       return newUnfinishedUploads;
     });
-  }, []);
+  }, [uploadzxRef.current]);
 
   const value = useMemo(() => {
     return {
