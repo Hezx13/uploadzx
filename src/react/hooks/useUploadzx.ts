@@ -106,6 +106,8 @@ export function useUploadzx(options: UseUploadzxOptions) {
   const pickAndUploadFiles = useCallback(async () => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.pickAndUploadFiles();
+    const stats = uploadzxRef.current.getQueueStats();
+    setQueueStats(stats);
   }, [uploadzxRef.current]);
 
   const pickFiles = useCallback(async () => {
@@ -116,11 +118,15 @@ export function useUploadzx(options: UseUploadzxOptions) {
   const addFiles = useCallback(async (files: UploadFile[]) => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.addFiles(files);
+    const stats = uploadzxRef.current.getQueueStats();
+    setQueueStats(stats);
   }, [uploadzxRef.current]);
 
   const startUploads = useCallback(async () => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.startUploads();
+    const stats = uploadzxRef.current.getQueueStats();
+    setQueueStats(stats);
   }, [uploadzxRef.current]);
 
   const pauseAll = useCallback(async () => {
@@ -151,6 +157,8 @@ export function useUploadzx(options: UseUploadzxOptions) {
   const cancelUpload = useCallback(async (fileId: string) => {
     if (!uploadzxRef.current) return;
     await uploadzxRef.current.cancelUpload(fileId);
+    const stats = uploadzxRef.current.getQueueStats();
+    setQueueStats(stats);
   }, [uploadzxRef.current]);
 
   const getUploadState = useCallback((fileId: string) => {
@@ -175,9 +183,17 @@ export function useUploadzx(options: UseUploadzxOptions) {
     setUnfinishedUploads(prev => {
       if (typeof fileHandleOrId === 'string') {
         const newUnfinishedUploads = prev.filter(upload => upload.id !== fileHandleOrId);
+        const stats = uploadzxRef.current?.getQueueStats();
+        if (stats) {
+          setQueueStats(stats);
+        }
         return newUnfinishedUploads;
       }
       const newUnfinishedUploads = prev.filter(upload => upload.id !== fileHandleOrId.id);
+      const stats = uploadzxRef.current?.getQueueStats();
+      if (stats) {
+        setQueueStats(stats);
+      }
       return newUnfinishedUploads;
     });
   }, [uploadzxRef.current]);

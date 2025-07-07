@@ -1,8 +1,8 @@
 import { memo } from 'react'
-import { useQueueActions } from 'uploadzx/react'
+import { useQueueStats } from 'uploadzx/react'
 
 export const QueueStats = memo(() => {
-  const { queueStatsText, queueStats } = useQueueActions()
+  const {queueStats } = useQueueStats()
   
   return (
     <div className="stats" style={{ 
@@ -16,7 +16,7 @@ export const QueueStats = memo(() => {
     }}>
       <span style={{ fontSize: '16px' }}>📊</span>
       <strong>Queue Stats:</strong> 
-      <span>{queueStatsText}</span>
+      <span>{queueStats.queueLength} files in queue</span>
       {queueStats.activeCount > 0 && (
         <span style={{ 
           marginLeft: '8px',

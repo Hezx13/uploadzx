@@ -7,7 +7,6 @@ export { TusUploader } from './core/TusUploader';
 export { UploadQueue, type QueueOptions } from './core/UploadQueue';
 export { FileHandleStore } from './core/FileHandleStore';
 
-// Export utilities
 export * from './utils';
 
 // Main library class

@@ -1,7 +1,7 @@
 import { useCallback, useState, ReactNode, DragEvent } from 'react';
 
 import type { UploadFile } from '../../types';
-import { useUploadzxContext } from './UploadzxProvider';
+import { useUploadzxActions } from './UploadzxProvider';
 import { getFilesFromDragEvent, generateFileId } from '../../utils';
 
 interface UploadDropzoneProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -23,7 +23,7 @@ export function UploadDropzone({
   clickable = false,
 }: UploadDropzoneProps) {
   const [isDragActive, setIsDragActive] = useState(false);
-  const { addFiles, pickAndUploadFiles } = useUploadzxContext();
+  const { addFiles, pickAndUploadFiles } = useUploadzxActions();
 
   const handleDragEnter = useCallback(
     (e: DragEvent) => {

@@ -2,7 +2,6 @@ import { createContext, useContext, ReactNode, useMemo } from 'react';
 import { useUploadzx, UseUploadzxOptions } from '../hooks/useUploadzx';
 import type { StoredFileHandle, UploadState } from '../../types';
 
-// Split contexts for different concerns
 const UploadzxActionsContext = createContext<{
   pickAndUploadFiles: () => Promise<void>;
   pickFiles: () => Promise<any[]>;
@@ -148,6 +147,9 @@ export function useUnfinishedUploads() {
 }
 
 // TODO: remove later, only for backward compatibility
+/**
+ * @deprecated Use individual hooks instead: useUploadzxActions, useUploadzxState, useUploadStates, useQueueStats, useUnfinishedUploads
+ */
 export function useUploadzxContext() {
   const actions = useUploadzxActions();
   const state = useUploadzxState();

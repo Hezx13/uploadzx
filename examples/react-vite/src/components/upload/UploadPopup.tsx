@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { useUploadzxContext } from 'uploadzx/react'
+import { useQueueStats, useUploadStates, useUploadzxActions } from 'uploadzx/react'
 import { UploadItem } from './UploadItem'
 
 interface UploadPopupProps {
@@ -9,7 +9,9 @@ interface UploadPopupProps {
 }
 
 export const UploadPopup = memo(({ isVisible, onToggle }: UploadPopupProps) => {
-  const { uploadStates, queueStats, clearCompletedUploads } = useUploadzxContext()
+  const { queueStats } = useQueueStats()
+  const {uploadStates} = useUploadStates()
+  const { clearCompletedUploads } = useUploadzxActions()
   const [isMinimized, setIsMinimized] = useState(false)
   
   const uploadStatesArray = useMemo(() => Object.entries(uploadStates), [uploadStates])

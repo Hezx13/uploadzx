@@ -1,8 +1,9 @@
 import { memo } from 'react'
-import { useUploadzxContext } from 'uploadzx/react'
+import { useUnfinishedUploads, useUploadzxActions } from 'uploadzx/react'
 
 export const UnfinishedUploads = memo(() => {
-  const { unfinishedUploads, restoreUnfinishedUpload } = useUploadzxContext()
+  const { unfinishedUploads } = useUnfinishedUploads()
+  const { restoreUnfinishedUpload } = useUploadzxActions()
   
   if (unfinishedUploads.length === 0) {
     return (
