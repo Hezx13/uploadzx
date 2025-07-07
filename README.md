@@ -1,5 +1,7 @@
 # uploadzx
-// ai generated shit, TODO: replace later
+
+> ⚠️ **Development Notice**: This library is currently in active development. The stable release is planned for **July 14, 2025**. Use with caution in production environments.
+
 [![npm version](https://img.shields.io/npm/v/uploadzx.svg)](https://www.npmjs.com/package/uploadzx)
 [![npm downloads](https://img.shields.io/npm/dm/uploadzx.svg)](https://www.npmjs.com/package/uploadzx)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
