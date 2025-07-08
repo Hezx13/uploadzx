@@ -1,6 +1,6 @@
 # uploadzx
 
-> ⚠️ **Development Notice**: This library is currently in active development. The stable release is planned for **July 14, 2025**. Use with caution in production environments.
+> ⚠️ **Development Notice**: This library is currently in active development. The stable release is planned for not earlier than **July 15, 2025**. Use with caution in production environments.
 
 [![npm version](https://img.shields.io/npm/v/uploadzx.svg)](https://www.npmjs.com/package/uploadzx)
 [![npm downloads](https://img.shields.io/npm/dm/uploadzx.svg)](https://www.npmjs.com/package/uploadzx)
