@@ -13,7 +13,13 @@ export * from './utils';
 import { FilePicker } from './core/FilePicker';
 import { TusUploaderOptions } from './core/TusUploader';
 import { UploadQueue, QueueOptions } from './core/UploadQueue';
-import { FilePickerOptions, StoredFileHandle, UploadEvents, UploadFile } from './types';
+import {
+  FilePickerOptions,
+  StoredFileHandle,
+  UploadEvents,
+  UploadEventMap,
+  UploadFile,
+} from './types';
 
 export interface UploadzxOptions extends QueueOptions {
   filePickerOptions?: FilePickerOptions;
@@ -37,6 +43,21 @@ export class Uploadzx {
 
   getIsInitialized(): boolean {
     return this.uploadQueue.getIsInitialized();
+  }
+
+  /** Subscribe to an upload event. Returns an unsubscribe function. */
+  on<K extends keyof UploadEventMap>(event: K, listener: UploadEventMap[K]): () => void {
+    return this.uploadQueue.on(event, listener);
+  }
+
+  /** Subscribe to a single occurrence of an upload event. */
+  once<K extends keyof UploadEventMap>(event: K, listener: UploadEventMap[K]): () => void {
+    return this.uploadQueue.once(event, listener);
+  }
+
+  /** Remove a previously registered listener. */
+  off<K extends keyof UploadEventMap>(event: K, listener: UploadEventMap[K]): void {
+    this.uploadQueue.off(event, listener);
   }
 
   async pickAndUploadFiles(tusOptions?: TusUploaderOptions): Promise<void> {

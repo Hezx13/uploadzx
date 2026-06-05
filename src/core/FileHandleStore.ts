@@ -1,5 +1,11 @@
 import { PersistenceAdapter, StoredFileHandle } from '../types';
-import { createLogger, isFileSystemAccessSupported, Logger } from '../utils';
+import {
+  createLogger,
+  createMockFileHandle,
+  isBrowser,
+  isFileSystemAccessSupported,
+  Logger,
+} from '../utils';
 
 /** Safari metadata record — intentionally does NOT hold the file bytes. */
 interface SafariFileMeta {
@@ -10,6 +16,7 @@ interface SafariFileMeta {
   lastModified: number;
   tusUploadUrl?: string;
   bytesUploaded?: number;
+  createdAt?: number;
   /** Legacy inline payload from schema v2. Read-only fallback. */
   data?: ArrayBuffer;
 }
@@ -36,6 +43,9 @@ export class FileHandleStore implements PersistenceAdapter {
   }
 
   private openDB(): Promise<IDBDatabase> {
+    if (!isBrowser()) {
+      return Promise.reject(new Error('uploadzx: IndexedDB is not available in this environment'));
+    }
     if (this.dbPromise) return this.dbPromise;
 
     this.dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
@@ -127,6 +137,7 @@ export class FileHandleStore implements PersistenceAdapter {
   }
 
   async storeFileHandle(fileHandle: FileSystemFileHandle, id: string): Promise<void> {
+    if (!isBrowser()) return;
     if (this.isFileSystemAccessSupported) {
       return this.storeNativeFileHandle(fileHandle, id);
     }
@@ -143,6 +154,7 @@ export class FileHandleStore implements PersistenceAdapter {
       type: file.type,
       handle: fileHandle,
       lastModified: file.lastModified,
+      createdAt: Date.now(),
     };
 
     await this.tx(this.storeName, 'readwrite', tx => {
@@ -151,12 +163,16 @@ export class FileHandleStore implements PersistenceAdapter {
   }
 
   private async storeSafariFile(file: File, id: string): Promise<void> {
+    // Caching the payload consumes origin storage; refuse if it won't fit.
+    await this.assertQuota(file.size);
+
     const meta: SafariFileMeta = {
       id,
       name: file.name,
       size: file.size,
       type: file.type,
       lastModified: file.lastModified,
+      createdAt: Date.now(),
     };
 
     await this.tx([this.safariMetaStore, this.safariBlobStore], 'readwrite', tx => {
@@ -167,6 +183,7 @@ export class FileHandleStore implements PersistenceAdapter {
   }
 
   async getFileHandle(id: string): Promise<StoredFileHandle | null> {
+    if (!isBrowser()) return null;
     if (this.isFileSystemAccessSupported) {
       return this.tx(this.storeName, 'readonly', async tx => {
         const result = await this.reqToPromise(tx.objectStore(this.storeName).get(id));
@@ -182,8 +199,7 @@ export class FileHandleStore implements PersistenceAdapter {
 
   /** Builds a StoredFileHandle from Safari metadata, lazily fetching the blob on demand. */
   private metaToStoredHandle(meta: SafariFileMeta): StoredFileHandle {
-    const handle = {
-      kind: 'file' as const,
+    const handle = createMockFileHandle({
       name: meta.name,
       getFile: async () => {
         const file = await this.getSafariFileByID(meta.id);
@@ -192,13 +208,7 @@ export class FileHandleStore implements PersistenceAdapter {
         }
         return file;
       },
-      queryPermission: async () => 'granted' as PermissionState,
-      requestPermission: async () => 'granted' as PermissionState,
-      createWritable: async () => {
-        throw new Error('Write operations not supported in Safari fallback mode');
-      },
-      isSameEntry: async () => false,
-    } as unknown as FileSystemFileHandle;
+    });
 
     return {
       id: meta.id,
@@ -213,6 +223,7 @@ export class FileHandleStore implements PersistenceAdapter {
   }
 
   async getAllFileHandles(): Promise<StoredFileHandle[]> {
+    if (!isBrowser()) return [];
     if (this.isFileSystemAccessSupported) {
       return this.tx(this.storeName, 'readonly', tx =>
         this.reqToPromise<StoredFileHandle[]>(tx.objectStore(this.storeName).getAll())
@@ -227,6 +238,7 @@ export class FileHandleStore implements PersistenceAdapter {
   }
 
   async removeFileHandle(id: string): Promise<void> {
+    if (!isBrowser()) return;
     this.logger.debug('removeFileHandle', id);
     if (this.isFileSystemAccessSupported) {
       await this.tx(this.storeName, 'readwrite', tx => {
@@ -245,6 +257,7 @@ export class FileHandleStore implements PersistenceAdapter {
     tusUploadUrl: string,
     bytesUploaded: number
   ): Promise<void> {
+    if (!isBrowser()) return;
     const storeName = this.isFileSystemAccessSupported ? this.storeName : this.safariMetaStore;
 
     // Read-modify-write touches only the small metadata record — never the blob.
@@ -287,6 +300,7 @@ export class FileHandleStore implements PersistenceAdapter {
   }
 
   async getFileFromHandleByID(id: string): Promise<File | null> {
+    if (!isBrowser()) return null;
     this.logger.debug('getFileFromHandleByID', id);
     if (!this.isFileSystemAccessSupported) {
       return this.getSafariFileByID(id);
@@ -335,6 +349,7 @@ export class FileHandleStore implements PersistenceAdapter {
   }
 
   async clear(): Promise<void> {
+    if (!isBrowser()) return;
     this.logger.debug('clear');
     const db = await this.openDB();
     const storeNames = Array.from(db.objectStoreNames);
@@ -344,5 +359,58 @@ export class FileHandleStore implements PersistenceAdapter {
         tx.objectStore(name).clear();
       }
     });
+  }
+
+  /**
+   * Deletes persisted records older than `maxAgeMs`. Reaps orphans left behind
+   * by abandoned/cancelled uploads so the cache doesn't grow without bound.
+   */
+  async reapStale(maxAgeMs: number): Promise<void> {
+    if (!isBrowser() || !Number.isFinite(maxAgeMs) || maxAgeMs <= 0) return;
+
+    const cutoff = Date.now() - maxAgeMs;
+    const isStale = (createdAt?: number) => typeof createdAt === 'number' && createdAt < cutoff;
+
+    if (this.isFileSystemAccessSupported) {
+      const all = await this.getAllFileHandles();
+      const stale = all.filter(h => isStale(h.createdAt));
+      for (const h of stale) {
+        await this.removeFileHandle(h.id);
+      }
+      if (stale.length) this.logger.debug(`reaped ${stale.length} stale handle(s)`);
+      return;
+    }
+
+    const metas = await this.tx(this.safariMetaStore, 'readonly', tx =>
+      this.reqToPromise<SafariFileMeta[]>(tx.objectStore(this.safariMetaStore).getAll())
+    );
+    const staleIds = metas.filter(m => isStale(m.createdAt)).map(m => m.id);
+    for (const id of staleIds) {
+      await this.removeFileHandle(id);
+    }
+    if (staleIds.length) this.logger.debug(`reaped ${staleIds.length} stale Safari record(s)`);
+  }
+
+  /** Throws when the origin lacks the storage to cache a payload of `size` bytes. */
+  private async assertQuota(size: number): Promise<void> {
+    const storage = (navigator as Navigator & { storage?: StorageManager }).storage;
+    if (!storage?.estimate) return; // Can't measure — let the write attempt proceed.
+
+    try {
+      const { usage = 0, quota = 0 } = await storage.estimate();
+      // Keep ~5% headroom so we don't wedge the origin's storage entirely.
+      if (quota > 0 && usage + size > quota * 0.95) {
+        throw new Error(
+          `uploadzx: insufficient storage to cache file (need ${size} bytes, ` +
+            `${Math.max(0, quota - usage)} available)`
+        );
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('uploadzx:')) {
+        throw error;
+      }
+      // estimate() itself failed — don't block the upload on a measurement error.
+      this.logger.warn('storage.estimate() failed; skipping quota check:', error);
+    }
   }
 }

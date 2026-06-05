@@ -1,6 +1,7 @@
 import type { DynamicValue } from '../types';
 
 export * from './logger';
+export * from './emitter';
 
 // Type augmentation for File System Access API
 declare global {
@@ -124,6 +125,11 @@ export function validateFile(
   return null;
 }
 
+/** True only in a browser-like environment with IndexedDB available. */
+export function isBrowser(): boolean {
+  return typeof window !== 'undefined' && typeof indexedDB !== 'undefined';
+}
+
 export function isFileSystemAccessSupported(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -190,19 +196,28 @@ export function getBrowserInfo(): {
  * Creates a mock FileSystemFileHandle for the Safari fallback, where the real
  * File System Access API is unavailable. Single source of truth — do not
  * re-implement this per module.
+ *
+ * Accepts either an in-memory `File` or a `{ name, getFile }` spec, so callers
+ * that resolve the file lazily (e.g. fetching a cached blob on demand) share the
+ * same handle boilerplate instead of duplicating it.
  */
-export function createMockFileHandle(file: File): FileSystemFileHandle {
+export function createMockFileHandle(
+  source: File | { name: string; getFile: () => Promise<File> }
+): FileSystemFileHandle {
+  const name = source instanceof File ? source.name : source.name;
+  const getFile = source instanceof File ? async () => source : source.getFile;
+
   const mockHandle = {
     kind: 'file' as const,
-    name: file.name,
-    getFile: async () => file,
+    name,
+    getFile,
     queryPermission: async () => 'granted' as PermissionState,
     requestPermission: async () => 'granted' as PermissionState,
     createWritable: async () => {
       throw new Error('Write operations not supported in Safari fallback mode');
     },
     isSameEntry: async () => false,
-  } as FileSystemFileHandle;
+  } as unknown as FileSystemFileHandle;
 
   return mockHandle;
 }

@@ -3,7 +3,6 @@
   "version": "0.1.4",
   "description": "Browser-only TypeScript upload library with tus integration for resumable uploads",
   "type": "module",
-
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -29,7 +28,8 @@
     "build:watch": "tsup --watch",
     "dev": "tsup --watch",
     "serve": "python -m http.server 8080 || python3 -m http.server 8080 || npx serve . -p 8080",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "example:react": "cd examples/react-vite && pnpm dev",
     "example:vanilla": "cd examples/vanilla-vite && pnpm dev",
     "examples:install": "pnpm install && pnpm build",
@@ -66,9 +66,12 @@
   "devDependencies": {
     "@types/node": "^24.0.8",
     "@types/react": "^18.2.0",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.10.1",
     "prettier": "^3.4.2",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.9"
   },
   "dependencies": {
     "tus-js-client": "^4.3.1"

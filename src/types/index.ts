@@ -68,6 +68,16 @@ export interface UploadEvents {
   onCancel?: (fileId: string) => void;
 }
 
+/** Event channels for the multi-listener emitter (`on`/`off`/`once`). */
+export interface UploadEventMap {
+  progress: (progress: UploadProgress) => void;
+  stateChange: (state: UploadState) => void;
+  complete: (fileId: string, tusUrl: string) => void;
+  error: (fileId: string, error: Error) => void;
+  cancel: (fileId: string) => void;
+  [key: string]: (...args: any[]) => void;
+}
+
 export interface FilePickerOptions {
   accept?: string;
   multiple?: boolean;
@@ -83,6 +93,8 @@ export interface StoredFileHandle {
   lastModified: number;
   tusUploadUrl?: string;
   bytesUploaded?: number;
+  /** Epoch ms when this record was first persisted. Used for TTL reaping. */
+  createdAt?: number;
 }
 
 /**
@@ -113,4 +125,6 @@ export interface PersistenceAdapter {
   updateFileHandleProgress(id: string, tusUploadUrl: string, bytesUploaded: number): Promise<void>;
   getFileFromHandleByID(id: string): Promise<File | null>;
   clear(): Promise<void>;
+  /** Optional: delete persisted records older than `maxAgeMs`. */
+  reapStale?(maxAgeMs: number): Promise<void>;
 }

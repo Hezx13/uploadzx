@@ -2,12 +2,13 @@ import {
   UploadFile,
   UploadOptions,
   UploadEvents,
+  UploadEventMap,
   UploadState,
   StoredFileHandle,
   Uploader,
   PersistenceAdapter,
 } from '../types';
-import { createLogger, Logger, validateFile } from '../utils';
+import { createLogger, isBrowser, Logger, TypedEmitter, validateFile } from '../utils';
 import { TusUploader, TusUploaderOptions } from './TusUploader';
 import { FileHandleStore } from './FileHandleStore';
 
@@ -25,14 +26,22 @@ export interface QueueOptions extends UploadOptions {
   uploaderFactory?: UploaderFactory;
   /** Inject an alternative persistence backend. */
   store?: PersistenceAdapter;
+  /**
+   * Max age (ms) for persisted upload records before they're reaped on init.
+   * Defaults to 7 days. Set to 0 to disable reaping.
+   */
+  persistenceTtlMs?: number;
 }
 
 /** Minimum interval between IndexedDB progress writes, per file. */
 const PROGRESS_PERSIST_INTERVAL_MS = 1000;
 
+/** Default TTL for persisted upload records: 7 days. */
+const DEFAULT_PERSISTENCE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 export class UploadQueue {
   private options: QueueOptions;
-  private events: UploadEvents;
+  private emitter = new TypedEmitter<UploadEventMap>();
   private logger: Logger;
   private uploaderFactory: UploaderFactory;
   private uploaders: Map<string, Uploader> = new Map();
@@ -52,7 +61,7 @@ export class UploadQueue {
       autoStart: false,
       ...options,
     };
-    this.events = events;
+    this.registerEvents(events);
     this.logger = createLogger(options.debug, options.logger);
     this.fileHandleStore = options.store ?? new FileHandleStore(this.logger);
     this.uploaderFactory =
@@ -67,7 +76,18 @@ export class UploadQueue {
   }
 
   private async initialize(): Promise<void> {
+    // No persistent storage outside the browser (SSR) — initialize as an empty,
+    // ready queue rather than throwing on `indexedDB`.
+    if (!isBrowser()) {
+      this.isInitialized = true;
+      this.options.onInit?.();
+      return;
+    }
     try {
+      const ttl = this.options.persistenceTtlMs ?? DEFAULT_PERSISTENCE_TTL_MS;
+      if (ttl > 0 && this.fileHandleStore.reapStale) {
+        await this.fileHandleStore.reapStale(ttl);
+      }
       await this.getUnfinishedUploadsFromStore();
       this.isInitialized = true;
       this.options.onInit?.();
@@ -83,18 +103,41 @@ export class UploadQueue {
     return this.isInitialized;
   }
 
+  /** Subscribe to a queue event. Returns an unsubscribe function. */
+  on<K extends keyof UploadEventMap>(event: K, listener: UploadEventMap[K]): () => void {
+    return this.emitter.on(event, listener);
+  }
+
+  /** Subscribe to a single occurrence of a queue event. */
+  once<K extends keyof UploadEventMap>(event: K, listener: UploadEventMap[K]): () => void {
+    return this.emitter.once(event, listener);
+  }
+
+  /** Remove a previously registered listener. */
+  off<K extends keyof UploadEventMap>(event: K, listener: UploadEventMap[K]): void {
+    this.emitter.off(event, listener);
+  }
+
+  /** Bridges the legacy single-callback `UploadEvents` bag onto the emitter. */
+  private registerEvents(events: UploadEvents): void {
+    if (events.onProgress) this.emitter.on('progress', events.onProgress);
+    if (events.onStateChange) this.emitter.on('stateChange', events.onStateChange);
+    if (events.onComplete) this.emitter.on('complete', events.onComplete);
+    if (events.onError) this.emitter.on('error', events.onError);
+    if (events.onCancel) this.emitter.on('cancel', events.onCancel);
+  }
+
   private buildEvents(): UploadEvents {
     return {
-      onProgress: this.events.onProgress,
+      onProgress: progress => this.emitter.emit('progress', progress),
       onStateChange: state => this.handleStateChange(state),
       onComplete: (fileId, tusUrl) => {
         this.handleComplete(fileId, tusUrl);
         void this.fileHandleStore.removeFileHandle(fileId);
       },
       onError: (fileId, error) => this.handleError(fileId, error),
-      onCancel: fileId => {
-        void this.cancelUpload(fileId);
-      },
+      // Surfaced once when the uploader actually transitions to cancelled.
+      onCancel: fileId => this.emitter.emit('cancel', fileId),
     };
   }
 
@@ -105,7 +148,7 @@ export class UploadQueue {
       const error = new Error(
         `Too many files: ${files.length} exceeds maximum of ${validation.maxFiles}`
       );
-      files.forEach(f => this.events.onError?.(f.id, error));
+      files.forEach(f => this.emitter.emit('error', f.id, error));
       return [];
     }
 
@@ -119,7 +162,18 @@ export class UploadQueue {
         });
         if (reason) {
           this.logger.warn(`Rejected "${file.name}": ${reason}`);
-          this.events.onError?.(file.id, new Error(reason));
+          this.emitter.emit('error', file.id, new Error(reason));
+          continue;
+        }
+      }
+
+      if (file.fileHandle) {
+        try {
+          await this.fileHandleStore.storeFileHandle(file.fileHandle, file.id);
+        } catch (error) {
+          // e.g. insufficient storage quota — reject this file, keep the batch.
+          this.logger.warn(`Could not persist "${file.name}":`, error);
+          this.emitter.emit('error', file.id, error as Error);
           continue;
         }
       }
@@ -127,10 +181,6 @@ export class UploadQueue {
       const uploader = this.uploaderFactory(file, this.options, this.buildEvents(), tusOptions);
       this.uploaders.set(file.id, uploader);
       this.queue.push(file.id);
-
-      if (file.fileHandle) {
-        await this.fileHandleStore.storeFileHandle(file.fileHandle, file.id);
-      }
       accepted.push(file);
     }
 
@@ -313,14 +363,14 @@ export class UploadQueue {
       }
     }
 
-    this.events.onStateChange?.(state);
+    this.emitter.emit('stateChange', state);
   }
 
   private handleComplete(fileId: string, tusUrl: string): void {
     this.activeUploads.delete(fileId);
     this.unfinishedUploads.delete(fileId);
     this.lastPersist.delete(fileId);
-    this.events.onComplete?.(fileId, tusUrl);
+    this.emitter.emit('complete', fileId, tusUrl);
     this.processQueue();
   }
 
@@ -331,7 +381,7 @@ export class UploadQueue {
       // Force-persist on error so the upload can be resumed later.
       void this.persistProgress(uploader, true);
     }
-    this.events.onError?.(fileId, error);
+    this.emitter.emit('error', fileId, error);
     this.processQueue();
   }
 
@@ -380,9 +430,12 @@ export class UploadQueue {
       return;
     }
 
-    if (file.lastModified !== fileHandle.lastModified) {
+    // Guard against the file being swapped/edited under the same handle since we
+    // last saw it. lastModified alone misses same-timestamp replacements, so we
+    // also require the size to match before trusting a resume.
+    if (file.lastModified !== fileHandle.lastModified || file.size !== fileHandle.size) {
       this.logger.warn(
-        `File modified since last access: ${fileHandle.name}. Removing from storage.`
+        `File changed since last access: ${fileHandle.name}. Removing from storage.`
       );
       await this.fileHandleStore.removeFileHandle(fileHandle.id);
       this.unfinishedUploads.delete(fileHandle.id);
