@@ -1,0 +1,868 @@
+.appShell {
+  width: min(1180px, calc(100vw - 32px));
+  min-height: calc(100vh - 32px);
+  margin: 16px auto;
+  display: grid;
+  gap: 14px;
+}
+
+.header {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.eyebrow {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: clamp(24px, 3vw, 36px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.primaryButton,
+.fullWidthButton,
+.smallButton,
+.toolbarPrimary,
+.toolbarButton,
+.toolbarDanger,
+.iconButton {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    transform 120ms ease;
+}
+
+.primaryButton,
+.fullWidthButton,
+.smallButton,
+.toolbarPrimary,
+.toolbarButton,
+.toolbarDanger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.primaryButton,
+.toolbarPrimary,
+.fullWidthButton {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.iconButton {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.iconButtonPrimary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.iconButtonDanger,
+.toolbarDanger {
+  color: var(--danger);
+}
+
+.primaryButton:hover,
+.toolbarPrimary:hover,
+.fullWidthButton:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.iconButton:hover,
+.toolbarButton:hover,
+.smallButton:hover {
+  background: var(--surface-muted);
+  border-color: var(--border-strong);
+}
+
+.toolbarDanger:hover,
+.iconButtonDanger:hover {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.primaryButton:active,
+.iconButton:active,
+.toolbarButton:active,
+.toolbarPrimary:active,
+.toolbarDanger:active,
+.fullWidthButton:active,
+.smallButton:active {
+  transform: translateY(1px);
+}
+
+.primaryButton:disabled,
+.iconButton:disabled,
+.toolbarButton:disabled,
+.toolbarPrimary:disabled,
+.toolbarDanger:disabled,
+.fullWidthButton:disabled,
+.smallButton:disabled,
+.menuItem:disabled,
+.menuItemDanger:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(220px, 1.35fr);
+  gap: 10px;
+}
+
+.metricCard,
+.progressSummary,
+.dropzonePanel,
+.activityPanel,
+.recoveryPanel,
+.workspace {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.metricCard,
+.progressSummary {
+  min-height: 90px;
+  padding: 14px;
+}
+
+.metricLabel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.metricValue {
+  margin-top: 10px;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.progressSummary {
+  display: grid;
+  gap: 12px;
+}
+
+.progressValue {
+  margin-top: 6px;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.progressRoot,
+.rowProgressRoot {
+  width: 100%;
+}
+
+.progressTrack,
+.rowProgressTrack {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7ebf0;
+}
+
+.progressIndicator,
+.rowProgressIndicator {
+  height: inherit;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 160ms ease;
+}
+
+.workspace {
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.workspaceBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.tabsList {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.tab {
+  position: relative;
+  z-index: 1;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tab[data-selected] {
+  color: var(--text);
+}
+
+.tabIndicator {
+  position: absolute;
+  z-index: 0;
+  left: var(--active-tab-left);
+  top: var(--active-tab-top);
+  width: var(--active-tab-width);
+  height: var(--active-tab-height);
+  border-radius: 6px;
+  background: #eef4ff;
+  transition:
+    left 160ms ease,
+    width 160ms ease;
+}
+
+.tabBadge {
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e7f6ed;
+  color: var(--success);
+  font-size: 11px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbarGroup {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.toolbarSeparator {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+}
+
+.tabPanel {
+  padding: 12px;
+}
+
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.1fr);
+  gap: 12px;
+}
+
+.dropzonePanel,
+.activityPanel,
+.recoveryPanel {
+  min-height: 400px;
+  padding: 16px;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.panelTitle {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.panelDescription {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.dropzone {
+  min-height: 250px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.dropzone:hover,
+.dropzoneActive {
+  border-color: var(--accent);
+  background: #f1f6ff;
+}
+
+.dropzoneActive {
+  transform: scale(0.995);
+}
+
+.dropzoneIcon {
+  color: var(--accent);
+}
+
+.dropzoneTitle {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.dropzoneDescription {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.fullWidthButton {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.uploadList,
+.recoveryList {
+  display: grid;
+  gap: 8px;
+}
+
+.uploadRow,
+.recoveryItem {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+.uploadRowCompact {
+  padding: 8px;
+}
+
+.uploadFileIcon,
+.recoveryIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  background: #edf2f7;
+  color: var(--text-muted);
+}
+
+.uploadFileIcon[data-status='uploading'] {
+  background: #eef4ff;
+  color: var(--accent);
+}
+
+.uploadFileIcon[data-status='completed'] {
+  background: #e7f6ed;
+  color: var(--success);
+}
+
+.uploadFileIcon[data-status='paused'] {
+  background: #fff7e8;
+  color: var(--warning);
+}
+
+.uploadFileIcon[data-status='error'],
+.uploadFileIcon[data-status='cancelled'] {
+  background: #fff1f2;
+  color: var(--danger);
+}
+
+.uploadRowBody {
+  min-width: 0;
+}
+
+.uploadRowTop {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fileMeta {
+  min-width: 0;
+}
+
+.fileName {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileDetails {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.statusPill {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #edf2f7;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.statusPill[data-status='uploading'] {
+  background: #eef4ff;
+  color: var(--accent);
+}
+
+.statusPill[data-status='completed'] {
+  background: #e7f6ed;
+  color: var(--success);
+}
+
+.statusPill[data-status='paused'] {
+  background: #fff7e8;
+  color: var(--warning);
+}
+
+.statusPill[data-status='error'],
+.statusPill[data-status='cancelled'] {
+  background: #fff1f2;
+  color: var(--danger);
+}
+
+.rowProgressRoot {
+  margin-top: 9px;
+}
+
+.rowProgressTrack {
+  height: 5px;
+}
+
+.rowProgressIndicator[data-status='completed'] {
+  background: var(--success);
+}
+
+.rowProgressIndicator[data-status='paused'] {
+  background: var(--warning);
+}
+
+.rowProgressIndicator[data-status='error'],
+.rowProgressIndicator[data-status='cancelled'] {
+  background: var(--danger);
+}
+
+.errorText {
+  margin-top: 7px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.recoveryItem {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.smallButton {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.emptyState {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.initializingPanel {
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+}
+
+.initializingPanel h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.initializingPanel p {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+}
+
+.loadingPulse {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #dbeafe;
+  border-top-color: var(--accent);
+  border-radius: 999px;
+  animation: spin 700ms linear infinite;
+}
+
+.menuPopup,
+.dialogPopup {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.menuPopup {
+  min-width: 190px;
+  padding: 6px;
+}
+
+.menuItem,
+.menuItemDanger {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  outline: none;
+}
+
+.menuItem[data-highlighted] {
+  background: var(--surface-muted);
+}
+
+.menuItemDanger {
+  color: var(--danger);
+}
+
+.menuItemDanger[data-highlighted] {
+  background: #fff1f2;
+}
+
+.tooltip {
+  max-width: 220px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #18202f;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(22, 31, 46, 0.18);
+}
+
+.tooltipArrow {
+  fill: #18202f;
+}
+
+.dialogBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(24, 32, 47, 0.28);
+}
+
+.dialogPopup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(440px, calc(100vw - 32px));
+  padding: 18px;
+  transform: translate(-50%, -50%);
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.dialogTitle {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.dialogDescription {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.settingTitle {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.settingDescription {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.switchRoot {
+  width: 42px;
+  height: 24px;
+  flex: 0 0 auto;
+  padding: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: #cbd5e1;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.switchRoot[data-checked] {
+  background: var(--accent);
+}
+
+.switchThumb {
+  width: 20px;
+  height: 20px;
+  display: block;
+  border-radius: 999px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(22, 31, 46, 0.22);
+  transition: transform 120ms ease;
+}
+
+.switchRoot[data-checked] .switchThumb {
+  transform: translateX(18px);
+}
+
+.endpointBox {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.endpointBox span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.endpointBox code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 12px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 980px) {
+  .metricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .progressSummary {
+    grid-column: 1 / -1;
+  }
+
+  .workspaceBar,
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .headerActions {
+    justify-content: flex-start;
+  }
+
+  .workspaceGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .appShell {
+    width: min(100vw - 20px, 1180px);
+    margin: 10px auto;
+  }
+
+  .metricsGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .workspaceBar {
+    padding: 10px;
+  }
+
+  .tabsList {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .tab {
+    flex: 1;
+    justify-content: center;
+    padding: 0 10px;
+  }
+
+  .toolbar,
+  .toolbarGroup {
+    width: 100%;
+  }
+
+  .toolbarButton,
+  .toolbarDanger,
+  .toolbarPrimary {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .dropzonePanel,
+  .activityPanel,
+  .recoveryPanel,
+  .tabPanel {
+    padding: 10px;
+  }
+
+  .uploadRowTop,
+  .recoveryItem {
+    align-items: stretch;
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .uploadRowTop {
+    flex-direction: column;
+  }
+
+  .rowActions {
+    justify-content: space-between;
+  }
+
+  .recoveryItem .smallButton {
+    grid-column: 1 / -1;
+  }
+}
