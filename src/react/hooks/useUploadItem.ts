@@ -33,7 +33,7 @@ export function useUploadItem(fileId: string) {
     return state.status !== 'completed' && state.status !== 'cancelled';
   }, [state?.status]);
 
-  const progress = useMemo(() => state?.progress, [state?.progress?.bytesUploaded]);
+  const progress = state?.progress;
 
   return {
     handlePause,

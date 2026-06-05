@@ -1,11 +1,19 @@
-import { createContext, useContext, ReactNode, useMemo } from 'react';
+import {
+  createContext,
+  useContext,
+  ReactNode,
+  useMemo,
+  useCallback,
+  useSyncExternalStore,
+} from 'react';
 import { useUploadzx, UseUploadzxOptions } from '../hooks/useUploadzx';
-import type { StoredFileHandle, UploadState } from '../../types';
+import type { StoredFileHandle, UploadFile, UploadState } from '../../types';
+import type { UploadStore } from '../UploadStore';
 
-const UploadzxActionsContext = createContext<{
+export interface UploadzxActions {
   pickAndUploadFiles: () => Promise<void>;
-  pickFiles: () => Promise<any[]>;
-  addFiles: (files: any[]) => Promise<void>;
+  pickFiles: () => Promise<UploadFile[]>;
+  addFiles: (files: UploadFile[]) => Promise<void>;
   startUploads: () => Promise<void>;
   pauseAll: () => Promise<void>;
   resumeAll: () => Promise<void>;
@@ -13,19 +21,20 @@ const UploadzxActionsContext = createContext<{
   pauseUpload: (fileId: string) => Promise<void>;
   resumeUpload: (fileId: string) => Promise<void>;
   cancelUpload: (fileId: string) => Promise<void>;
-  getUploadState: (fileId: string) => any;
-  getAllStates: () => any;
+  getUploadState: (fileId: string) => UploadState | null;
+  getAllStates: () => UploadState[];
   clearCompletedUploads: () => void;
   restoreUnfinishedUpload: (fileHandleOrId: StoredFileHandle | string) => Promise<void>;
-} | null>(null);
+}
+
+const UploadzxActionsContext = createContext<UploadzxActions | null>(null);
 
 const UploadzxStateContext = createContext<{
   isInitialized: boolean;
 } | null>(null);
 
-const UploadStatesContext = createContext<{
-  uploadStates: Record<string, UploadState>;
-} | null>(null);
+/** Provides the external store; per-file/global subscriptions read from it. */
+const UploadStoreContext = createContext<UploadStore | null>(null);
 
 const QueueStatsContext = createContext<{
   queueStats: { queueLength: number; activeCount: number };
@@ -43,64 +52,66 @@ interface UploadzxProviderProps {
 export function UploadzxProvider({ children, options }: UploadzxProviderProps) {
   const uploadzxValue = useUploadzx(options);
 
-  const actionsValue = useMemo(() => ({
-    pickAndUploadFiles: uploadzxValue.pickAndUploadFiles,
-    pickFiles: uploadzxValue.pickFiles,
-    addFiles: uploadzxValue.addFiles,
-    startUploads: uploadzxValue.startUploads,
-    pauseAll: uploadzxValue.pauseAll,
-    resumeAll: uploadzxValue.resumeAll,
-    cancelAll: uploadzxValue.cancelAll,
-    pauseUpload: uploadzxValue.pauseUpload,
-    resumeUpload: uploadzxValue.resumeUpload,
-    cancelUpload: uploadzxValue.cancelUpload,
-    getUploadState: uploadzxValue.getUploadState,
-    getAllStates: uploadzxValue.getAllStates,
-    clearCompletedUploads: uploadzxValue.clearCompletedUploads,
-    restoreUnfinishedUpload: uploadzxValue.restoreUnfinishedUpload,
-  }), [
-    uploadzxValue.pickAndUploadFiles,
-    uploadzxValue.pickFiles,
-    uploadzxValue.addFiles,
-    uploadzxValue.startUploads,
-    uploadzxValue.pauseAll,
-    uploadzxValue.resumeAll,
-    uploadzxValue.cancelAll,
-    uploadzxValue.pauseUpload,
-    uploadzxValue.resumeUpload,
-    uploadzxValue.cancelUpload,
-    uploadzxValue.getUploadState,
-    uploadzxValue.getAllStates,
-    uploadzxValue.clearCompletedUploads,
-    uploadzxValue.restoreUnfinishedUpload,
-  ]);
+  const actionsValue = useMemo<UploadzxActions>(
+    () => ({
+      pickAndUploadFiles: uploadzxValue.pickAndUploadFiles,
+      pickFiles: uploadzxValue.pickFiles,
+      addFiles: uploadzxValue.addFiles,
+      startUploads: uploadzxValue.startUploads,
+      pauseAll: uploadzxValue.pauseAll,
+      resumeAll: uploadzxValue.resumeAll,
+      cancelAll: uploadzxValue.cancelAll,
+      pauseUpload: uploadzxValue.pauseUpload,
+      resumeUpload: uploadzxValue.resumeUpload,
+      cancelUpload: uploadzxValue.cancelUpload,
+      getUploadState: uploadzxValue.getUploadState,
+      getAllStates: uploadzxValue.getAllStates,
+      clearCompletedUploads: uploadzxValue.clearCompletedUploads,
+      restoreUnfinishedUpload: uploadzxValue.restoreUnfinishedUpload,
+    }),
+    [
+      uploadzxValue.pickAndUploadFiles,
+      uploadzxValue.pickFiles,
+      uploadzxValue.addFiles,
+      uploadzxValue.startUploads,
+      uploadzxValue.pauseAll,
+      uploadzxValue.resumeAll,
+      uploadzxValue.cancelAll,
+      uploadzxValue.pauseUpload,
+      uploadzxValue.resumeUpload,
+      uploadzxValue.cancelUpload,
+      uploadzxValue.getUploadState,
+      uploadzxValue.getAllStates,
+      uploadzxValue.clearCompletedUploads,
+      uploadzxValue.restoreUnfinishedUpload,
+    ]
+  );
 
-  const stateValue = useMemo(() => ({
-    isInitialized: uploadzxValue.isInitialized,
-  }), [uploadzxValue.isInitialized]);
+  const stateValue = useMemo(
+    () => ({ isInitialized: uploadzxValue.isInitialized }),
+    [uploadzxValue.isInitialized]
+  );
 
-  const uploadStatesValue = useMemo(() => ({
-    uploadStates: uploadzxValue.uploadStates,
-  }), [uploadzxValue.uploadStates]);
+  const queueStatsValue = useMemo(
+    () => ({ queueStats: uploadzxValue.queueStats }),
+    [uploadzxValue.queueStats]
+  );
 
-  const queueStatsValue = useMemo(() => ({
-    queueStats: uploadzxValue.queueStats,
-  }), [uploadzxValue.queueStats]);
-
-  const unfinishedUploadsValue = useMemo(() => ({
-    unfinishedUploads: uploadzxValue.unfinishedUploads,
-  }), [uploadzxValue.unfinishedUploads]);
+  const unfinishedUploadsValue = useMemo(
+    () => ({ unfinishedUploads: uploadzxValue.unfinishedUploads }),
+    [uploadzxValue.unfinishedUploads]
+  );
 
   return (
     <UploadzxActionsContext.Provider value={actionsValue}>
       <UploadzxStateContext.Provider value={stateValue}>
-        <UploadStatesContext.Provider value={uploadStatesValue}>
+        <UploadStoreContext.Provider value={uploadzxValue.store}>
           <QueueStatsContext.Provider value={queueStatsValue}>
             <UnfinishedUploadsContext.Provider value={unfinishedUploadsValue}>
               {children}
             </UnfinishedUploadsContext.Provider>
           </QueueStatsContext.Provider>
-        </UploadStatesContext.Provider>
+        </UploadStoreContext.Provider>
       </UploadzxStateContext.Provider>
     </UploadzxActionsContext.Provider>
   );
@@ -122,12 +133,27 @@ export function useUploadzxState() {
   return context;
 }
 
-export function useUploadStates() {
-  const context = useContext(UploadStatesContext);
-  if (!context) {
-    throw new Error('useUploadStates must be used within UploadzxProvider');
+/** Access the raw external store (advanced). Prefer `useUploadState(fileId)`. */
+export function useUploadStore(): UploadStore {
+  const store = useContext(UploadStoreContext);
+  if (!store) {
+    throw new Error('useUploadStore must be used within UploadzxProvider');
   }
-  return context;
+  return store;
+}
+
+/**
+ * Live record of all upload states. Re-renders on every progress tick by design —
+ * for a single row prefer `useUploadState(fileId)`, which subscribes granularly.
+ */
+export function useUploadStates() {
+  const store = useUploadStore();
+  const uploadStates = useSyncExternalStore(
+    store.subscribeGlobal,
+    store.getRecordSnapshot,
+    store.getRecordSnapshot
+  );
+  return { uploadStates };
 }
 
 export function useQueueStats() {

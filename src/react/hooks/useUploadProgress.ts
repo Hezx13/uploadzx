@@ -1,20 +1,13 @@
-import { useEffect, useState } from 'react';
-import type { UploadProgress } from '../../types';
+import type { UploadProgress, UploadState } from '../../types';
 
+/**
+ * Derives a file's progress from an upload-states record. Computed directly —
+ * no effect, no extra render. For a live single-file subscription prefer
+ * `useUploadState(fileId)?.progress`.
+ */
 export function useUploadProgress(
-  uploadStates: Record<string, any>,
+  uploadStates: Record<string, UploadState>,
   fileId: string
 ): UploadProgress | null {
-  const [progress, setProgress] = useState<UploadProgress | null>(null);
-
-  useEffect(() => {
-    const state = uploadStates[fileId];
-    if (state?.progress) {
-      setProgress(state.progress);
-    } else {
-      setProgress(null);
-    }
-  }, [uploadStates, fileId]);
-
-  return progress;
+  return uploadStates[fileId]?.progress ?? null;
 }

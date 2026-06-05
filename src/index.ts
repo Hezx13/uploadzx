@@ -4,7 +4,7 @@ export * from './types';
 // Export core modules
 export { FilePicker } from './core/FilePicker';
 export { TusUploader } from './core/TusUploader';
-export { UploadQueue, type QueueOptions } from './core/UploadQueue';
+export { UploadQueue, type QueueOptions, type UploaderFactory } from './core/UploadQueue';
 export { FileHandleStore } from './core/FileHandleStore';
 
 export * from './utils';
@@ -13,7 +13,7 @@ export * from './utils';
 import { FilePicker } from './core/FilePicker';
 import { TusUploaderOptions } from './core/TusUploader';
 import { UploadQueue, QueueOptions } from './core/UploadQueue';
-import { FilePickerOptions, StoredFileHandle, UploadEvents } from './types';
+import { FilePickerOptions, StoredFileHandle, UploadEvents, UploadFile } from './types';
 
 export interface UploadzxOptions extends QueueOptions {
   filePickerOptions?: FilePickerOptions;
@@ -25,10 +25,14 @@ export class Uploadzx {
   private uploadQueue: UploadQueue;
   private tusOptions?: TusUploaderOptions;
 
+  /** Resolves once prior unfinished uploads are loaded; rejects on init failure. */
+  public readonly ready: Promise<void>;
+
   constructor(options: UploadzxOptions, events: UploadEvents = {}) {
     this.filePicker = new FilePicker(options.filePickerOptions);
     this.uploadQueue = new UploadQueue(options, events);
     this.tusOptions = options.tusOptions;
+    this.ready = this.uploadQueue.ready;
   }
 
   getIsInitialized(): boolean {
@@ -46,7 +50,7 @@ export class Uploadzx {
     return this.filePicker.pickFiles();
   }
 
-  async addFiles(files: any[], tusOptions?: TusUploaderOptions) {
+  async addFiles(files: UploadFile[], tusOptions?: TusUploaderOptions) {
     return this.uploadQueue.addFiles(files, tusOptions || this.tusOptions);
   }
 
@@ -63,7 +67,6 @@ export class Uploadzx {
   }
 
   async cancelAll() {
-    console.log('cancelAll');
     return this.uploadQueue.cancelAll();
   }
 

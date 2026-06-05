@@ -1,19 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import type { UploadState } from '../../types';
-import { useUploadStates } from '../components/UploadzxProvider';
+import { useUploadStore } from '../components/UploadzxProvider';
 
+/**
+ * Subscribes to a single file's upload state. Only re-renders when *this* file
+ * changes — not when any other upload makes progress.
+ */
 export function useUploadState(fileId: string): UploadState | null {
-  const { uploadStates } = useUploadStates();
-  const [state, setState] = useState<UploadState | null>(null);
+  const store = useUploadStore();
 
-  useEffect(() => {
-    try {
-      const state = uploadStates?.[fileId] || null;
-      setState(state);
-    } catch (error) {
-      console.error('Error getting upload state for fileId:', fileId, error);
-    }
-  }, [uploadStates, fileId]);
+  const subscribe = useMemo(() => store.subscribeFile(fileId), [store, fileId]);
+  const getSnapshot = useCallback(() => store.getState(fileId), [store, fileId]);
 
-  return state;
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

@@ -1,63 +1,141 @@
-import { StoredFileHandle } from '../types';
-import { isFileSystemAccessSupported } from '../utils';
+import { PersistenceAdapter, StoredFileHandle } from '../types';
+import { createLogger, isFileSystemAccessSupported, Logger } from '../utils';
 
-interface SafariStoredFile {
+/** Safari metadata record — intentionally does NOT hold the file bytes. */
+interface SafariFileMeta {
   id: string;
   name: string;
   size: number;
   type: string;
   lastModified: number;
-  data: ArrayBuffer; // Store actual file data for Safari
-  tusUploadUrl?: string; // Store upload URL for resumption
-  bytesUploaded?: number; // Store upload progress
+  tusUploadUrl?: string;
+  bytesUploaded?: number;
+  /** Legacy inline payload from schema v2. Read-only fallback. */
+  data?: ArrayBuffer;
 }
 
-export class FileHandleStore {
-  private dbName = 'uploadzx-filehandles';
-  private version = 2; // increment this for safari fallback support
-  private storeName = 'filehandles';
-  private safariStoreName = 'safari-files';
-  private isFileSystemAccessSupported = isFileSystemAccessSupported();
+/** Safari payload record — the bytes live here, read only when resuming. */
+interface SafariBlobRecord {
+  id: string;
+  blob: Blob;
+}
 
-  private async openDB(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
+export class FileHandleStore implements PersistenceAdapter {
+  private dbName = 'uploadzx-filehandles';
+  private version = 3; // v3: split Safari metadata from blob payloads
+  private storeName = 'filehandles';
+  private safariMetaStore = 'safari-files';
+  private safariBlobStore = 'safari-blobs';
+  private isFileSystemAccessSupported = isFileSystemAccessSupported();
+  private logger: Logger;
+
+  private dbPromise?: Promise<IDBDatabase>;
+
+  constructor(logger?: Logger) {
+    this.logger = logger ?? createLogger(false);
+  }
+
+  private openDB(): Promise<IDBDatabase> {
+    if (this.dbPromise) return this.dbPromise;
+
+    this.dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(this.dbName, this.version);
 
       request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
+
+      request.onsuccess = () => {
+        const db = request.result;
+        // If another tab triggers a version bump, close so it isn't blocked and
+        // drop our memoized handle so the next call reopens cleanly.
+        db.onversionchange = () => {
+          db.close();
+          this.dbPromise = undefined;
+        };
+        resolve(db);
+      };
 
       request.onupgradeneeded = () => {
         const db = request.result;
 
-        // Original store for File System Access API
         if (!db.objectStoreNames.contains(this.storeName)) {
           const store = db.createObjectStore(this.storeName, { keyPath: 'id' });
           store.createIndex('name', 'name', { unique: false });
         }
 
-        // Safari fallback store for actual file data
-        if (!db.objectStoreNames.contains(this.safariStoreName)) {
-          const safariStore = db.createObjectStore(this.safariStoreName, { keyPath: 'id' });
-          safariStore.createIndex('name', 'name', { unique: false });
+        if (!db.objectStoreNames.contains(this.safariMetaStore)) {
+          const meta = db.createObjectStore(this.safariMetaStore, { keyPath: 'id' });
+          meta.createIndex('name', 'name', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains(this.safariBlobStore)) {
+          db.createObjectStore(this.safariBlobStore, { keyPath: 'id' });
         }
       };
+    });
+
+    // If opening fails, don't cache the rejected promise forever.
+    this.dbPromise.catch(() => {
+      this.dbPromise = undefined;
+    });
+
+    return this.dbPromise;
+  }
+
+  /** Wraps a transaction so the returned promise settles on commit, not before. */
+  private async tx<T>(
+    storeNames: string | string[],
+    mode: IDBTransactionMode,
+    work: (tx: IDBTransaction) => Promise<T> | T
+  ): Promise<T> {
+    const db = await this.openDB();
+    return new Promise<T>((resolve, reject) => {
+      const transaction = db.transaction(storeNames, mode);
+      let result: T;
+      let settled = false;
+
+      transaction.oncomplete = () => resolve(result);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+
+      Promise.resolve(work(transaction))
+        .then(value => {
+          result = value;
+          settled = true;
+          if (mode === 'readonly') {
+            // Reads have no commit step worth waiting on; resolve immediately.
+            resolve(result);
+          }
+        })
+        .catch(err => {
+          if (!settled) {
+            try {
+              transaction.abort();
+            } catch {
+              /* already aborting */
+            }
+            reject(err);
+          }
+        });
+    });
+  }
+
+  private reqToPromise<T>(request: IDBRequest<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
     });
   }
 
   async storeFileHandle(fileHandle: FileSystemFileHandle, id: string): Promise<void> {
     if (this.isFileSystemAccessSupported) {
       return this.storeNativeFileHandle(fileHandle, id);
-    } else {
-      // For Safari, we need to store the actual file data
-      const file = await fileHandle.getFile();
-      return this.storeSafariFile(file, id);
     }
+    const file = await fileHandle.getFile();
+    return this.storeSafariFile(file, id);
   }
 
   private async storeNativeFileHandle(fileHandle: FileSystemFileHandle, id: string): Promise<void> {
-    const db = await this.openDB();
     const file = await fileHandle.getFile();
-
     const storedHandle: StoredFileHandle = {
       id,
       name: file.name,
@@ -67,177 +145,98 @@ export class FileHandleStore {
       lastModified: file.lastModified,
     };
 
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.put(storedHandle);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve();
+    await this.tx(this.storeName, 'readwrite', tx => {
+      tx.objectStore(this.storeName).put(storedHandle);
     });
   }
 
   private async storeSafariFile(file: File, id: string): Promise<void> {
-    const db = await this.openDB();
-    const data = await file.arrayBuffer();
-
-    const safariFile: SafariStoredFile = {
+    const meta: SafariFileMeta = {
       id,
       name: file.name,
       size: file.size,
       type: file.type,
       lastModified: file.lastModified,
-      data,
     };
 
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.safariStoreName], 'readwrite');
-      const store = transaction.objectStore(this.safariStoreName);
-      const request = store.put(safariFile);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve();
+    await this.tx([this.safariMetaStore, this.safariBlobStore], 'readwrite', tx => {
+      tx.objectStore(this.safariMetaStore).put(meta);
+      // Store the File (a Blob) directly — kept disk-backed by IndexedDB.
+      tx.objectStore(this.safariBlobStore).put({ id, blob: file } as SafariBlobRecord);
     });
   }
 
   async getFileHandle(id: string): Promise<StoredFileHandle | null> {
     if (this.isFileSystemAccessSupported) {
-      return this.getNativeFileHandle(id);
-    } else {
-      return this.getSafariFileAsHandle(id);
+      return this.tx(this.storeName, 'readonly', async tx => {
+        const result = await this.reqToPromise(tx.objectStore(this.storeName).get(id));
+        return (result as StoredFileHandle) || null;
+      });
     }
+
+    const meta = await this.tx(this.safariMetaStore, 'readonly', tx =>
+      this.reqToPromise<SafariFileMeta | undefined>(tx.objectStore(this.safariMetaStore).get(id))
+    );
+    return meta ? this.metaToStoredHandle(meta) : null;
   }
 
-  private async getNativeFileHandle(id: string): Promise<StoredFileHandle | null> {
-    const db = await this.openDB();
-
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.storeName], 'readonly');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.get(id);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result || null);
-    });
-  }
-
-  private async getSafariFileAsHandle(id: string): Promise<StoredFileHandle | null> {
-    const db = await this.openDB();
-
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.safariStoreName], 'readonly');
-      const store = transaction.objectStore(this.safariStoreName);
-      const request = store.get(id);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const safariFile = request.result as SafariStoredFile;
-        if (!safariFile) {
-          resolve(null);
-          return;
-        }
-
-        // Create a mock FileSystemFileHandle for Safari
-        const mockHandle = this.createMockFileHandle(safariFile);
-        const storedHandle: StoredFileHandle = {
-          id: safariFile.id,
-          name: safariFile.name,
-          size: safariFile.size,
-          type: safariFile.type,
-          handle: mockHandle,
-          lastModified: safariFile.lastModified,
-          tusUploadUrl: safariFile.tusUploadUrl,
-          bytesUploaded: safariFile.bytesUploaded,
-        };
-        resolve(storedHandle);
-      };
-    });
-  }
-
-  private createMockFileHandle(safariFile: SafariStoredFile): FileSystemFileHandle {
-    const file = new File([safariFile.data], safariFile.name, {
-      type: safariFile.type,
-      lastModified: safariFile.lastModified,
-    });
-
-    const mockHandle = {
+  /** Builds a StoredFileHandle from Safari metadata, lazily fetching the blob on demand. */
+  private metaToStoredHandle(meta: SafariFileMeta): StoredFileHandle {
+    const handle = {
       kind: 'file' as const,
-      name: safariFile.name,
-      getFile: async () => file,
+      name: meta.name,
+      getFile: async () => {
+        const file = await this.getSafariFileByID(meta.id);
+        if (!file) {
+          throw new Error(`uploadzx: cached file for "${meta.name}" is no longer available`);
+        }
+        return file;
+      },
       queryPermission: async () => 'granted' as PermissionState,
       requestPermission: async () => 'granted' as PermissionState,
       createWritable: async () => {
         throw new Error('Write operations not supported in Safari fallback mode');
       },
       isSameEntry: async () => false,
-    } as FileSystemFileHandle;
+    } as unknown as FileSystemFileHandle;
 
-    return mockHandle;
+    return {
+      id: meta.id,
+      name: meta.name,
+      size: meta.size,
+      type: meta.type,
+      handle,
+      lastModified: meta.lastModified,
+      tusUploadUrl: meta.tusUploadUrl,
+      bytesUploaded: meta.bytesUploaded,
+    };
   }
 
   async getAllFileHandles(): Promise<StoredFileHandle[]> {
     if (this.isFileSystemAccessSupported) {
-      return this.getAllNativeFileHandles();
-    } else {
-      return this.getAllSafariFilesAsHandles();
+      return this.tx(this.storeName, 'readonly', tx =>
+        this.reqToPromise<StoredFileHandle[]>(tx.objectStore(this.storeName).getAll())
+      );
     }
-  }
 
-  private async getAllNativeFileHandles(): Promise<StoredFileHandle[]> {
-    const db = await this.openDB();
-
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.storeName], 'readonly');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.getAll();
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-    });
-  }
-
-  private async getAllSafariFilesAsHandles(): Promise<StoredFileHandle[]> {
-    const db = await this.openDB();
-
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.safariStoreName], 'readonly');
-      const store = transaction.objectStore(this.safariStoreName);
-      const request = store.getAll();
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const safariFiles = request.result as SafariStoredFile[];
-        const handles = safariFiles.map(safariFile => {
-          const mockHandle = this.createMockFileHandle(safariFile);
-          return {
-            id: safariFile.id,
-            name: safariFile.name,
-            size: safariFile.size,
-            type: safariFile.type,
-            handle: mockHandle,
-            lastModified: safariFile.lastModified,
-            tusUploadUrl: safariFile.tusUploadUrl,
-            bytesUploaded: safariFile.bytesUploaded,
-          } as StoredFileHandle;
-        });
-        resolve(handles);
-      };
-    });
+    // Listing unfinished uploads reads metadata ONLY — the blobs stay on disk.
+    const metas = await this.tx(this.safariMetaStore, 'readonly', tx =>
+      this.reqToPromise<SafariFileMeta[]>(tx.objectStore(this.safariMetaStore).getAll())
+    );
+    return metas.map(meta => this.metaToStoredHandle(meta));
   }
 
   async removeFileHandle(id: string): Promise<void> {
-    console.log('removeFileHandle', id);
-    const db = await this.openDB();
-
-    const storeName = this.isFileSystemAccessSupported ? this.storeName : this.safariStoreName;
-
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([storeName], 'readwrite');
-      const store = transaction.objectStore(storeName);
-      const request = store.delete(id);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve();
+    this.logger.debug('removeFileHandle', id);
+    if (this.isFileSystemAccessSupported) {
+      await this.tx(this.storeName, 'readwrite', tx => {
+        tx.objectStore(this.storeName).delete(id);
+      });
+      return;
+    }
+    await this.tx([this.safariMetaStore, this.safariBlobStore], 'readwrite', tx => {
+      tx.objectStore(this.safariMetaStore).delete(id);
+      tx.objectStore(this.safariBlobStore).delete(id);
     });
   }
 
@@ -246,165 +245,103 @@ export class FileHandleStore {
     tusUploadUrl: string,
     bytesUploaded: number
   ): Promise<void> {
-    if (this.isFileSystemAccessSupported) {
-      return this.updateNativeFileHandleProgress(id, tusUploadUrl, bytesUploaded);
-    } else {
-      return this.updateSafariFileHandleProgress(id, tusUploadUrl, bytesUploaded);
-    }
-  }
+    const storeName = this.isFileSystemAccessSupported ? this.storeName : this.safariMetaStore;
 
-  private async updateNativeFileHandleProgress(
-    id: string,
-    tusUploadUrl: string,
-    bytesUploaded: number
-  ): Promise<void> {
-    const db = await this.openDB();
-
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const getRequest = store.get(id);
-
-      getRequest.onerror = () => reject(getRequest.error);
-      getRequest.onsuccess = () => {
-        const storedHandle = getRequest.result as StoredFileHandle;
-        if (storedHandle) {
-          storedHandle.tusUploadUrl = tusUploadUrl;
-          storedHandle.bytesUploaded = bytesUploaded;
-
-          const putRequest = store.put(storedHandle);
-          putRequest.onerror = () => reject(putRequest.error);
-          putRequest.onsuccess = () => resolve();
-        } else {
-          resolve(); // Handle not found, nothing to update
-        }
-      };
-    });
-  }
-
-  private async updateSafariFileHandleProgress(
-    id: string,
-    tusUploadUrl: string,
-    bytesUploaded: number
-  ): Promise<void> {
-    const db = await this.openDB();
-
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.safariStoreName], 'readwrite');
-      const store = transaction.objectStore(this.safariStoreName);
-      const getRequest = store.get(id);
-
-      getRequest.onerror = () => reject(getRequest.error);
-      getRequest.onsuccess = () => {
-        const safariFile = getRequest.result as SafariStoredFile;
-        if (safariFile) {
-          safariFile.tusUploadUrl = tusUploadUrl;
-          safariFile.bytesUploaded = bytesUploaded;
-
-          const putRequest = store.put(safariFile);
-          putRequest.onerror = () => reject(putRequest.error);
-          putRequest.onsuccess = () => resolve();
-        } else {
-          resolve(); // File not found, nothing to update
-        }
-      };
+    // Read-modify-write touches only the small metadata record — never the blob.
+    await this.tx(storeName, 'readwrite', async tx => {
+      const store = tx.objectStore(storeName);
+      const record = await this.reqToPromise<StoredFileHandle | SafariFileMeta | undefined>(
+        store.get(id)
+      );
+      if (!record) return;
+      record.tusUploadUrl = tusUploadUrl;
+      record.bytesUploaded = bytesUploaded;
+      store.put(record);
     });
   }
 
   async verifyPermission(fileHandle: FileSystemFileHandle): Promise<boolean> {
-    // Safari fallback handles always have permission since we store the data directly
+    // Safari fallback handles always "have" permission since we hold the data.
     if (!this.isFileSystemAccessSupported) {
       return true;
     }
 
     try {
-      const permission = await (fileHandle as any).queryPermission({ mode: 'read' });
-      if (permission === 'granted') {
-        return true;
-      }
+      const handle = fileHandle as FileSystemFileHandle & {
+        queryPermission(d: { mode: string }): Promise<PermissionState>;
+        requestPermission(d: { mode: string }): Promise<PermissionState>;
+      };
+      const permission = await handle.queryPermission({ mode: 'read' });
+      if (permission === 'granted') return true;
 
       if (permission === 'prompt') {
-        const requestPermission = await (fileHandle as any).requestPermission({ mode: 'read' });
-        return requestPermission === 'granted';
+        const requested = await handle.requestPermission({ mode: 'read' });
+        return requested === 'granted';
       }
-
       return false;
     } catch (error) {
-      console.error('Error verifying permission:', error);
+      // Typically thrown when called outside a user gesture — NOT a denial.
+      this.logger.warn('Permission check failed (likely no user gesture):', error);
       return false;
     }
   }
 
   async getFileFromHandleByID(id: string): Promise<File | null> {
-    console.log('getFileFromHandleByID', id);
+    this.logger.debug('getFileFromHandleByID', id);
     if (!this.isFileSystemAccessSupported) {
-      // Safari fallback: get file directly from stored data
       return this.getSafariFileByID(id);
     }
 
-    const fileHandle = await this.getFileHandle(id);
-    if (!fileHandle) {
+    const stored = await this.getFileHandle(id);
+    if (!stored) return null;
+
+    const hasPermission = await this.verifyPermission(stored.handle);
+    if (!hasPermission) {
+      // Could not (re)acquire read permission. This is commonly because we are
+      // outside a user gesture, NOT because the user denied access — so we keep
+      // the handle for a later, gesture-driven retry instead of destroying it.
+      this.logger.warn(
+        `Read permission not granted for "${stored.name}". Keeping handle for a later user-initiated retry.`
+      );
       return null;
     }
 
-    const hasPermission = await this.verifyPermission(fileHandle.handle);
-    if (!hasPermission) {
-      try {
-        console.log('requesting permission', fileHandle.id);
-        await (fileHandle.handle as any).requestPermission({ mode: 'read' });
-      } catch {
-        console.log('error requesting permission', fileHandle.id);
-        await this.removeFileHandle(fileHandle.id);
-        return null;
-      }
-    }
     try {
-      const file = await fileHandle.handle.getFile();
-      return file;
+      return await stored.handle.getFile();
     } catch (error) {
+      this.logger.error('Failed to read file from handle:', error);
       return null;
     }
   }
 
   private async getSafariFileByID(id: string): Promise<File | null> {
-    const db = await this.openDB();
+    const meta = await this.tx(this.safariMetaStore, 'readonly', tx =>
+      this.reqToPromise<SafariFileMeta | undefined>(tx.objectStore(this.safariMetaStore).get(id))
+    );
+    if (!meta) return null;
 
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([this.safariStoreName], 'readonly');
-      const store = transaction.objectStore(this.safariStoreName);
-      const request = store.get(id);
+    const blobRecord = await this.tx(this.safariBlobStore, 'readonly', tx =>
+      this.reqToPromise<SafariBlobRecord | undefined>(tx.objectStore(this.safariBlobStore).get(id))
+    );
 
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const safariFile = request.result as SafariStoredFile;
-        if (!safariFile) {
-          resolve(null);
-          return;
-        }
+    // Prefer the split blob store; fall back to a legacy inline ArrayBuffer (v2).
+    const source: BlobPart | undefined = blobRecord?.blob ?? meta.data;
+    if (!source) return null;
 
-        const file = new File([safariFile.data], safariFile.name, {
-          type: safariFile.type,
-          lastModified: safariFile.lastModified,
-        });
-        resolve(file);
-      };
+    return new File([source], meta.name, {
+      type: meta.type,
+      lastModified: meta.lastModified,
     });
   }
 
   async clear(): Promise<void> {
-    console.log('clear');
+    this.logger.debug('clear');
     const db = await this.openDB();
+    const storeNames = Array.from(db.objectStoreNames);
 
-    const storeNames = this.isFileSystemAccessSupported
-      ? [this.storeName]
-      : [this.storeName, this.safariStoreName]; // Clear both stores to be safe
-
-    const transaction = db.transaction(storeNames, 'readwrite');
-
-    storeNames.forEach(storeName => {
-      if (db.objectStoreNames.contains(storeName)) {
-        const store = transaction.objectStore(storeName);
-        store.clear();
+    await this.tx(storeNames, 'readwrite', tx => {
+      for (const name of storeNames) {
+        tx.objectStore(name).clear();
       }
     });
   }

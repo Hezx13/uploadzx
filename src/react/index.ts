@@ -5,8 +5,19 @@ export { useUploadProgress } from './hooks/useUploadProgress';
 export { useFilePicker } from './hooks/useFilePicker';
 export { useUploadItem } from './hooks/useUploadItem';
 export { useQueueActions } from './hooks/useQueueActions';
-export { UploadzxProvider, useUploadzxContext, useUploadzxState, useUploadStates, useQueueStats, useUnfinishedUploads, useUploadzxActions } from './components/UploadzxProvider';
+export {
+  UploadzxProvider,
+  useUploadzxContext,
+  useUploadzxState,
+  useUploadStates,
+  useUploadStore,
+  useQueueStats,
+  useUnfinishedUploads,
+  useUploadzxActions,
+  type UploadzxActions,
+} from './components/UploadzxProvider';
 export { UploadDropzone } from './components/UploadDropzone';
+export { UploadStore } from './UploadStore';
 
 // Re-export core types for convenience
 export type {

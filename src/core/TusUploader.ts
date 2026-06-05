@@ -1,13 +1,22 @@
-import { UploadFile, UploadOptions, UploadEvents, UploadState, UploadProgress } from '../types';
+import {
+  UploadFile,
+  UploadOptions,
+  UploadEvents,
+  UploadState,
+  UploadProgress,
+  Uploader,
+} from '../types';
+import { createLogger, Logger, resolveDynamicValue } from '../utils';
 import { Upload, defaultOptions } from 'tus-js-client';
 import type { UploadOptions as TusUploadOptions } from 'tus-js-client';
 export interface TusUploaderOptions {
   previousUploadUrl?: string;
   previousBytesUploaded?: number;
   trackSpeed?: boolean;
+  logger?: Logger;
 }
 
-export class TusUploader {
+export class TusUploader implements Uploader {
   private uploadFile: UploadFile;
   private options: UploadOptions;
   private events: UploadEvents;
@@ -16,6 +25,7 @@ export class TusUploader {
   private state: UploadState;
   private previousUploadUrl?: string;
   private trackSpeed: boolean;
+  private logger: Logger;
   private lastProgressUpdate?: {
     bytesUploaded: number;
     timestamp: number;
@@ -33,6 +43,7 @@ export class TusUploader {
     this.abortController = new AbortController();
     this.previousUploadUrl = tusOptions?.previousUploadUrl;
     this.trackSpeed = tusOptions?.trackSpeed ?? false;
+    this.logger = tusOptions?.logger ?? createLogger(options.debug, options.logger);
 
     const initialBytesUploaded = tusOptions?.previousBytesUploaded || 0;
     const initialPercentage = Math.round((initialBytesUploaded / uploadFile.size) * 100);
@@ -93,7 +104,7 @@ export class TusUploader {
 
   async resume(): Promise<void> {
     if (this.canResume()) {
-      console.log(
+      this.logger.debug(
         `Resuming upload for file: ${this.uploadFile.name}, previousUrl: ${this.previousUploadUrl}`
       );
       this.abortController = new AbortController();
@@ -176,6 +187,13 @@ export class TusUploader {
   }
 
   private async startTusUpload(): Promise<void> {
+    // Resolve headers/metadata at request time so long-paused uploads pick up
+    // fresh credentials instead of replaying a token captured at construction.
+    const [resolvedHeaders, resolvedMetadata] = await Promise.all([
+      resolveDynamicValue(this.options.headers),
+      resolveDynamicValue(this.options.metadata),
+    ]);
+
     return new Promise(async (resolve, reject) => {
       const uploadOptions: TusUploadOptions = {
         endpoint: this.options.endpoint,
@@ -185,9 +203,9 @@ export class TusUploader {
         metadata: {
           filename: this.uploadFile.name,
           filetype: this.uploadFile.type,
-          ...this.options.metadata,
+          ...resolvedMetadata,
         },
-        headers: this.options.headers,
+        headers: resolvedHeaders,
         // Use default fingerprinting for resumable uploads (file size + modification time + name)
         fingerprint: defaultOptions.fingerprint,
         // Ensure fingerprints are stored for resuming
@@ -238,24 +256,24 @@ export class TusUploader {
       if (this.previousUploadUrl) {
         try {
           const previousUploads = await this.upload.findPreviousUploads();
-          console.log('Found previous uploads:', previousUploads.length);
+          this.logger.debug('Found previous uploads:', previousUploads.length);
 
           const matchingUpload = previousUploads.find(
             upload => upload.uploadUrl === this.previousUploadUrl
           );
 
           if (matchingUpload) {
-            console.log('Resuming from previous upload:', {
+            this.logger.debug('Resuming from previous upload:', {
               url: matchingUpload.uploadUrl,
               size: matchingUpload.size,
               uploaded: matchingUpload.size ? this.state.progress.bytesUploaded : 0,
             });
             this.upload.resumeFromPreviousUpload(matchingUpload);
           } else {
-            console.warn('Previous upload not found, starting new upload');
+            this.logger.warn('Previous upload not found, starting new upload');
           }
         } catch (error) {
-          console.warn('Could not find previous upload, starting new:', error);
+          this.logger.warn('Could not find previous upload, starting new:', error);
           // Continue with new upload if resume fails
         }
       }

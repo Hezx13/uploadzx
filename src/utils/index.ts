@@ -1,8 +1,71 @@
+import type { DynamicValue } from '../types';
+
+export * from './logger';
+
 // Type augmentation for File System Access API
 declare global {
   interface DataTransferItem {
     getAsFileSystemHandle?(): Promise<FileSystemHandle | null>;
   }
+}
+
+/**
+ * Resolves a value that may be supplied statically or as a (possibly async)
+ * factory. Used to refresh headers/metadata per request.
+ */
+export async function resolveDynamicValue<T>(
+  value: DynamicValue<T> | undefined
+): Promise<T | undefined> {
+  if (typeof value === 'function') {
+    return await (value as () => T | Promise<T>)();
+  }
+  return value;
+}
+
+/**
+ * Parses an HTML-style `accept` string (e.g. `"image/*,.pdf,text/plain"`) into
+ * the `{ description, accept }` shape the File System Access API expects, where
+ * `accept` maps concrete MIME types to file-extension arrays.
+ *
+ * Returns `undefined` when nothing usable can be derived, so callers can omit
+ * the `types` option entirely rather than pass a malformed one.
+ */
+export function parseAcceptString(
+  accept?: string
+): { description: string; accept: Record<string, string[]> }[] | undefined {
+  if (!accept) return undefined;
+
+  const tokens = accept
+    .split(',')
+    .map(t => t.trim())
+    .filter(Boolean);
+  if (tokens.length === 0) return undefined;
+
+  const mimeMap: Record<string, string[]> = {};
+  let hasUsableMime = false;
+
+  for (const token of tokens) {
+    if (token.startsWith('.')) {
+      // Bare extension: the File System Access API requires a MIME key, so we
+      // can't represent this precisely. Fold it under a catch-all type.
+      mimeMap['application/octet-stream'] = mimeMap['application/octet-stream'] || [];
+      if (!mimeMap['application/octet-stream'].includes(token)) {
+        mimeMap['application/octet-stream'].push(token);
+      }
+    } else if (token.includes('/') && !token.endsWith('/*')) {
+      // Concrete MIME type. The picker accepts an empty extension list.
+      mimeMap[token] = mimeMap[token] || [];
+      hasUsableMime = true;
+    }
+    // Wildcard subtypes like `image/*` are not representable here and are
+    // intentionally dropped rather than emitted as an invalid key.
+  }
+
+  if (!hasUsableMime && !mimeMap['application/octet-stream']) {
+    return undefined;
+  }
+
+  return [{ description: 'Files', accept: mimeMap }];
 }
 
 export function formatFileSize(bytes: number): string {
@@ -124,9 +187,11 @@ export function getBrowserInfo(): {
 }
 
 /**
- * Creates a mock FileSystemFileHandle for Safari fallback
+ * Creates a mock FileSystemFileHandle for the Safari fallback, where the real
+ * File System Access API is unavailable. Single source of truth — do not
+ * re-implement this per module.
  */
-function createMockFileHandle(file: File): FileSystemFileHandle {
+export function createMockFileHandle(file: File): FileSystemFileHandle {
   const mockHandle = {
     kind: 'file' as const,
     name: file.name,
@@ -163,8 +228,8 @@ export async function getFileHandlesFromDataTransfer(
           continue;
         }
       }
-    } catch (error) {
-      console.warn('Failed to get file handle from drag item:', error);
+    } catch {
+      // getAsFileSystemHandle can throw in some browsers; fall back below.
     }
 
     // Fallback to regular file (Safari, Firefox, or when getAsFileSystemHandle fails)
