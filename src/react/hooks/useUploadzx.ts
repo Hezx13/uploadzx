@@ -7,7 +7,7 @@ export interface UseUploadzxOptions extends UploadzxOptions {
   autoStart?: boolean;
   onProgress?: (progress: UploadProgress) => void;
   onStateChange?: (state: UploadState) => void;
-  onComplete?: (fileId: string, tusUrl: string) => void;
+  onComplete?: (fileId: string, url: string) => void;
   onError?: (fileId: string, error: Error) => void;
   onCancel?: (fileId: string) => void;
 }
@@ -45,7 +45,7 @@ export function useUploadzx(options: UseUploadzxOptions) {
         );
         optionsRef.current.onStateChange?.(state);
       },
-      onComplete: (fileId, tusUrl) => optionsRef.current.onComplete?.(fileId, tusUrl),
+      onComplete: (fileId, url) => optionsRef.current.onComplete?.(fileId, url),
       onError: (fileId, error) => optionsRef.current.onError?.(fileId, error),
       onCancel: fileId => optionsRef.current.onCancel?.(fileId),
     }),

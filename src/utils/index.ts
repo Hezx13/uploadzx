@@ -2,6 +2,7 @@ import type { DynamicValue } from '../types';
 
 export * from './logger';
 export * from './emitter';
+export type { DynamicValue };
 
 // Type augmentation for File System Access API
 declare global {

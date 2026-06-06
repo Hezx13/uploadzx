@@ -1,4 +1,4 @@
-import { PersistenceAdapter, StoredFileHandle } from '../types';
+import { PersistenceAdapter, StoredFileHandle, ResumeData } from '../types';
 import {
   createLogger,
   createMockFileHandle,
@@ -14,7 +14,7 @@ interface SafariFileMeta {
   size: number;
   type: string;
   lastModified: number;
-  tusUploadUrl?: string;
+  resumeData?: ResumeData;
   bytesUploaded?: number;
   createdAt?: number;
   /** Legacy inline payload from schema v2. Read-only fallback. */
@@ -29,7 +29,7 @@ interface SafariBlobRecord {
 
 export class FileHandleStore implements PersistenceAdapter {
   private dbName = 'uploadzx-filehandles';
-  private version = 3; // v3: split Safari metadata from blob payloads
+  private version = 4; // v4: replace tusUploadUrl with generic resumeData
   private storeName = 'filehandles';
   private safariMetaStore = 'safari-files';
   private safariBlobStore = 'safari-blobs';
@@ -210,6 +210,13 @@ export class FileHandleStore implements PersistenceAdapter {
       },
     });
 
+    // Migrate legacy v3 tusUploadUrl to v4 resumeData if needed
+    // (property may have been set by older code before schema update)
+    let resumeData: ResumeData | undefined = meta.resumeData;
+    if (!resumeData && (meta as any).tusUploadUrl) {
+      resumeData = { uploadUrl: (meta as any).tusUploadUrl };
+    }
+
     return {
       id: meta.id,
       name: meta.name,
@@ -217,8 +224,9 @@ export class FileHandleStore implements PersistenceAdapter {
       type: meta.type,
       handle,
       lastModified: meta.lastModified,
-      tusUploadUrl: meta.tusUploadUrl,
+      resumeData,
       bytesUploaded: meta.bytesUploaded,
+      createdAt: meta.createdAt,
     };
   }
 
@@ -254,7 +262,7 @@ export class FileHandleStore implements PersistenceAdapter {
 
   async updateFileHandleProgress(
     id: string,
-    tusUploadUrl: string,
+    resumeData: ResumeData | undefined,
     bytesUploaded: number
   ): Promise<void> {
     if (!isBrowser()) return;
@@ -267,7 +275,7 @@ export class FileHandleStore implements PersistenceAdapter {
         store.get(id)
       );
       if (!record) return;
-      record.tusUploadUrl = tusUploadUrl;
+      record.resumeData = resumeData;
       record.bytesUploaded = bytesUploaded;
       store.put(record);
     });

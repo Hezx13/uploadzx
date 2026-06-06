@@ -7,30 +7,28 @@ import {
   StoredFileHandle,
   Uploader,
   PersistenceAdapter,
+  QueueOptions,
+  UploadDriver,
+  ResumeData,
 } from '../types';
 import { createLogger, isBrowser, Logger, TypedEmitter, validateFile } from '../utils';
-import { TusUploader, TusUploaderOptions } from './TusUploader';
+import { UploadController } from '../transport/UploadController';
 import { FileHandleStore } from './FileHandleStore';
 
-export type UploaderFactory = (
-  file: UploadFile,
-  options: UploadOptions,
-  events: UploadEvents,
-  tusOptions?: TusUploaderOptions
-) => Uploader;
+export interface UploaderFactoryParams {
+  file: UploadFile;
+  driver: UploadDriver;
+  events: UploadEvents;
+  resumeData?: ResumeData;
+  bytesUploaded?: number;
+  trackSpeed?: boolean;
+}
 
-export interface QueueOptions extends UploadOptions {
-  maxConcurrent?: number;
-  autoStart?: boolean;
-  /** Inject an alternative transport (S3 multipart, presigned PUT, ...). */
+export type UploaderFactory = (params: UploaderFactoryParams) => Uploader;
+
+export interface UploadQueueConstructorOptions extends QueueOptions {
+  /** Inject an alternative uploader factory for testing. */
   uploaderFactory?: UploaderFactory;
-  /** Inject an alternative persistence backend. */
-  store?: PersistenceAdapter;
-  /**
-   * Max age (ms) for persisted upload records before they're reaped on init.
-   * Defaults to 7 days. Set to 0 to disable reaping.
-   */
-  persistenceTtlMs?: number;
 }
 
 /** Minimum interval between IndexedDB progress writes, per file. */
@@ -40,7 +38,7 @@ const PROGRESS_PERSIST_INTERVAL_MS = 1000;
 const DEFAULT_PERSISTENCE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class UploadQueue {
-  private options: QueueOptions;
+  private options: UploadQueueConstructorOptions;
   private emitter = new TypedEmitter<UploadEventMap>();
   private logger: Logger;
   private uploaderFactory: UploaderFactory;
@@ -55,10 +53,11 @@ export class UploadQueue {
   /** Resolves when the queue has loaded any prior unfinished uploads; rejects on init failure. */
   public readonly ready: Promise<void>;
 
-  constructor(options: QueueOptions, events: UploadEvents = {}) {
+  constructor(options: UploadQueueConstructorOptions, events: UploadEvents = {}) {
     this.options = {
       maxConcurrent: 3,
       autoStart: false,
+      autoEvictCompleted: true,
       ...options,
     };
     this.registerEvents(events);
@@ -66,8 +65,20 @@ export class UploadQueue {
     this.fileHandleStore = options.store ?? new FileHandleStore(this.logger);
     this.uploaderFactory =
       options.uploaderFactory ??
-      ((file, opts, evts, tusOptions) =>
-        new TusUploader(file, opts, evts, { ...tusOptions, logger: this.logger }));
+      (({ file, driver, events: evts, resumeData, bytesUploaded, trackSpeed }) => {
+        // Pass only what the controller actually consumes, not the full queue config.
+        const controller = new UploadController(
+          file,
+          { debug: this.options.debug, logger: this.options.logger },
+          driver,
+          evts,
+          { trackSpeed: trackSpeed ?? false, logger: this.logger }
+        );
+        if (resumeData !== undefined || bytesUploaded !== undefined) {
+          controller.setResumeState(resumeData, bytesUploaded || 0);
+        }
+        return controller;
+      });
 
     this.ready = this.initialize();
     // Mark as handled so a consumer that never awaits `ready` doesn't trigger
@@ -131,8 +142,8 @@ export class UploadQueue {
     return {
       onProgress: progress => this.emitter.emit('progress', progress),
       onStateChange: state => this.handleStateChange(state),
-      onComplete: (fileId, tusUrl) => {
-        this.handleComplete(fileId, tusUrl);
+      onComplete: (fileId, url) => {
+        this.handleComplete(fileId, url);
         void this.fileHandleStore.removeFileHandle(fileId);
       },
       onError: (fileId, error) => this.handleError(fileId, error),
@@ -141,7 +152,7 @@ export class UploadQueue {
     };
   }
 
-  async addFiles(files: UploadFile[], tusOptions?: TusUploaderOptions): Promise<UploadFile[]> {
+  async addFiles(files: UploadFile[]): Promise<UploadFile[]> {
     const validation = this.options.validation;
 
     if (validation?.maxFiles && files.length > validation.maxFiles) {
@@ -178,7 +189,14 @@ export class UploadQueue {
         }
       }
 
-      const uploader = this.uploaderFactory(file, this.options, this.buildEvents(), tusOptions);
+      const uploader = this.uploaderFactory({
+        file,
+        driver: this.options.driver,
+        events: this.buildEvents(),
+        resumeData: undefined,
+        bytesUploaded: 0,
+        trackSpeed: this.options.trackSpeed,
+      });
       this.uploaders.set(file.id, uploader);
       this.queue.push(file.id);
       accepted.push(file);
@@ -281,11 +299,8 @@ export class UploadQueue {
     return Array.from(this.unfinishedUploads.values());
   }
 
-  async restoreUnfinishedUpload(
-    fileHandleOrId: StoredFileHandle | string,
-    tusOpts?: TusUploaderOptions
-  ): Promise<void> {
-    return this.resumeUnfinishedUpload(fileHandleOrId, tusOpts);
+  async restoreUnfinishedUpload(fileHandleOrId: StoredFileHandle | string): Promise<void> {
+    return this.resumeUnfinishedUpload(fileHandleOrId);
   }
 
   /** Adds a file id to the pending queue if it isn't already queued. */
@@ -309,21 +324,21 @@ export class UploadQueue {
 
   private async updateStoredFileHandleProgress(uploader: Uploader): Promise<void> {
     const state = uploader.getState();
-    const uploadUrl = uploader.getCurrentUploadUrl();
+    const resumeData = uploader.getResumeData();
 
-    if (uploadUrl && state.progress.bytesUploaded > 0) {
+    if (resumeData && state.progress.bytesUploaded > 0) {
       const storedHandle = this.unfinishedUploads.get(state.fileId);
       if (storedHandle) {
         const updatedHandle: StoredFileHandle = {
           ...storedHandle,
-          tusUploadUrl: uploadUrl,
+          resumeData,
           bytesUploaded: state.progress.bytesUploaded,
         };
         this.unfinishedUploads.set(state.fileId, updatedHandle);
       }
       await this.fileHandleStore.updateFileHandleProgress(
         state.fileId,
-        uploadUrl,
+        resumeData,
         state.progress.bytesUploaded
       );
     }
@@ -366,11 +381,16 @@ export class UploadQueue {
     this.emitter.emit('stateChange', state);
   }
 
-  private handleComplete(fileId: string, tusUrl: string): void {
+  private handleComplete(fileId: string, url: string): void {
     this.activeUploads.delete(fileId);
     this.unfinishedUploads.delete(fileId);
     this.lastPersist.delete(fileId);
-    this.emitter.emit('complete', fileId, tusUrl);
+    this.emitter.emit('complete', fileId, url);
+    // Release the completed uploader (and the File it pins) unless the consumer
+    // opted to retain it for later querying via getAllStates().
+    if (this.options.autoEvictCompleted) {
+      this.uploaders.delete(fileId);
+    }
     this.processQueue();
   }
 
@@ -403,8 +423,7 @@ export class UploadQueue {
   }
 
   private async resumeUnfinishedUpload(
-    fileHandleOrId: StoredFileHandle | string,
-    tusOpts?: TusUploaderOptions
+    fileHandleOrId: StoredFileHandle | string
   ): Promise<void> {
     let id: string;
     let fileHandle: StoredFileHandle | undefined;
@@ -442,15 +461,8 @@ export class UploadQueue {
       return;
     }
 
-    const tusOptions: TusUploaderOptions = {
-      previousUploadUrl: fileHandle.tusUploadUrl,
-      previousBytesUploaded: fileHandle.bytesUploaded || 0,
-      trackSpeed: tusOpts?.trackSpeed || false,
-      logger: this.logger,
-    };
-
-    const uploader = this.uploaderFactory(
-      {
+    const uploader = this.uploaderFactory({
+      file: {
         id: fileHandle.id,
         file,
         fileHandle: fileHandle.handle,
@@ -458,10 +470,12 @@ export class UploadQueue {
         size: fileHandle.size,
         type: fileHandle.type,
       },
-      this.options,
-      this.buildEvents(),
-      tusOptions
-    );
+      driver: this.options.driver,
+      events: this.buildEvents(),
+      resumeData: fileHandle.resumeData,
+      bytesUploaded: fileHandle.bytesUploaded || 0,
+      trackSpeed: this.options.trackSpeed,
+    });
 
     this.uploaders.set(fileHandle.id, uploader);
 

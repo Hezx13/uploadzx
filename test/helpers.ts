@@ -6,8 +6,9 @@ import type {
   UploadFile,
   UploadOptions,
   UploadState,
+  UploadDriver,
+  ResumeData,
 } from '../src/types';
-import type { TusUploaderOptions } from '../src/core/TusUploader';
 
 export function makeUploadFile(overrides: Partial<UploadFile> = {}): UploadFile {
   const name = overrides.name ?? 'file.bin';
@@ -28,23 +29,24 @@ export function makeUploadFile(overrides: Partial<UploadFile> = {}): UploadFile 
 /** A fully controllable Uploader for driving the queue's state machine in tests. */
 export class FakeUploader implements Uploader {
   state: UploadState;
-  private uploadUrl?: string;
+  private resumeData?: ResumeData;
   static instances: FakeUploader[] = [];
 
   constructor(
     public file: UploadFile,
-    public options: UploadOptions,
+    public driver: UploadDriver,
     public events: UploadEvents,
-    public tusOptions?: TusUploaderOptions
+    resumeData?: ResumeData,
+    bytesUploaded?: number
   ) {
-    this.uploadUrl = tusOptions?.previousUploadUrl;
+    this.resumeData = resumeData;
     this.state = {
       fileId: file.id,
-      status: tusOptions?.previousUploadUrl ? 'paused' : 'pending',
+      status: resumeData ? 'paused' : 'pending',
       file: file.file,
       progress: {
         fileId: file.id,
-        bytesUploaded: tusOptions?.previousBytesUploaded ?? 0,
+        bytesUploaded: bytesUploaded ?? 0,
         bytesTotal: file.size,
         percentage: 0,
         bytesPerSecond: 0,
@@ -70,8 +72,8 @@ export class FakeUploader implements Uploader {
   getState(): UploadState {
     return { ...this.state };
   }
-  getCurrentUploadUrl(): string | undefined {
-    return this.uploadUrl;
+  getResumeData(): ResumeData | undefined {
+    return this.resumeData;
   }
   canResume(): boolean {
     return this.state.status === 'paused' || this.state.status === 'error';
@@ -79,7 +81,7 @@ export class FakeUploader implements Uploader {
 
   // --- test drivers ---
   progress(bytes: number): void {
-    this.uploadUrl = this.uploadUrl ?? 'https://tus.example/upload/1';
+    this.resumeData = this.resumeData ?? { uploadUrl: 'https://tus.example/upload/1' };
     this.state = {
       ...this.state,
       progress: { ...this.state.progress, bytesUploaded: bytes },
@@ -88,8 +90,8 @@ export class FakeUploader implements Uploader {
     this.events.onStateChange?.(this.state);
   }
   complete(url = 'https://tus.example/upload/1'): void {
-    this.uploadUrl = url;
-    this.setStatus('completed', { tusUrl: url });
+    this.resumeData = { uploadUrl: url };
+    this.setStatus('completed', { url });
     this.events.onComplete?.(this.file.id, url);
   }
   fail(error: Error): void {
@@ -105,12 +107,20 @@ export class FakeUploader implements Uploader {
 
 export function fakeUploaderFactory() {
   FakeUploader.instances = [];
-  return (
-    file: UploadFile,
-    options: UploadOptions,
-    events: UploadEvents,
-    tusOptions?: TusUploaderOptions
-  ): Uploader => new FakeUploader(file, options, events, tusOptions);
+  return ({
+    file,
+    driver,
+    events,
+    resumeData,
+    bytesUploaded,
+  }: {
+    file: UploadFile;
+    driver: UploadDriver;
+    events: UploadEvents;
+    resumeData?: ResumeData;
+    bytesUploaded?: number;
+    trackSpeed?: boolean;
+  }): Uploader => new FakeUploader(file, driver, events, resumeData, bytesUploaded);
 }
 
 /** A trivial in-memory PersistenceAdapter for queue tests that need storage. */
@@ -143,11 +153,11 @@ export class InMemoryStore implements PersistenceAdapter {
   }
   async updateFileHandleProgress(
     id: string,
-    tusUploadUrl: string,
+    resumeData: ResumeData | undefined,
     bytesUploaded: number
   ): Promise<void> {
     const r = this.records.get(id);
-    if (r) this.records.set(id, { ...r, tusUploadUrl, bytesUploaded });
+    if (r) this.records.set(id, { ...r, resumeData, bytesUploaded });
   }
   async getFileFromHandleByID(id: string): Promise<File | null> {
     return this.files.get(id) ?? null;

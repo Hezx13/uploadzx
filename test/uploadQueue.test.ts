@@ -69,7 +69,13 @@ describe('UploadQueue validation', () => {
 
 describe('UploadQueue.clearCompletedUploads', () => {
   it('removes completed/cancelled uploaders and keeps active ones', async () => {
-    const queue = new UploadQueue({ ...baseOpts(), maxConcurrent: 3, autoStart: true });
+    // autoEvict off so the completed uploader is retained until we clear it.
+    const queue = new UploadQueue({
+      ...baseOpts(),
+      maxConcurrent: 3,
+      autoStart: true,
+      autoEvictCompleted: false,
+    });
     await queue.ready;
     await queue.addFiles([
       makeUploadFile({ id: 'a' }),
@@ -79,12 +85,47 @@ describe('UploadQueue.clearCompletedUploads', () => {
 
     FakeUploader.instances.find(u => u.file.id === 'a')!.complete();
     await tick();
+    expect(queue.getUploadState('a')?.status).toBe('completed'); // retained pre-clear
 
     queue.clearCompletedUploads();
     const ids = queue.getAllStates().map(s => s.fileId);
     expect(ids).not.toContain('a'); // completed → removed
     expect(ids).toContain('b'); // active → kept
     expect(ids).toContain('c');
+  });
+});
+
+describe('UploadQueue auto-eviction of completed uploads', () => {
+  it('drops the completed uploader by default, freeing its retained File', async () => {
+    const queue = new UploadQueue({ ...baseOpts(), maxConcurrent: 3, autoStart: true });
+    await queue.ready;
+    await queue.addFiles([makeUploadFile({ id: 'a' }), makeUploadFile({ id: 'b' })]);
+
+    const completes: string[] = [];
+    queue.on('complete', id => completes.push(id));
+
+    FakeUploader.instances.find(u => u.file.id === 'a')!.complete();
+    await tick();
+
+    expect(completes).toEqual(['a']); // event still fires before eviction
+    expect(queue.getUploadState('a')).toBeNull(); // evicted
+    expect(queue.getUploadState('b')).not.toBeNull(); // active one untouched
+    expect(queue.getAllStates().map(s => s.fileId)).not.toContain('a');
+  });
+
+  it('retains completed uploaders when autoEvictCompleted is false', async () => {
+    const queue = new UploadQueue({
+      ...baseOpts(),
+      autoStart: true,
+      autoEvictCompleted: false,
+    });
+    await queue.ready;
+    await queue.addFiles([makeUploadFile({ id: 'a' })]);
+
+    FakeUploader.instances.find(u => u.file.id === 'a')!.complete();
+    await tick();
+
+    expect(queue.getUploadState('a')?.status).toBe('completed');
   });
 });
 
@@ -139,7 +180,7 @@ describe('UploadQueue persistence', () => {
     await queue.pauseUpload('p1');
     await tick();
     expect(store.records.get('p1')?.bytesUploaded).toBe(3);
-    expect(store.records.get('p1')?.tusUploadUrl).toBeTruthy();
+    expect(store.records.get('p1')?.resumeData).toBeTruthy();
   });
 });
 

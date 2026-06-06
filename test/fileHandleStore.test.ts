@@ -46,10 +46,10 @@ describe('FileHandleStore (Safari fallback path)', () => {
   it('updates progress without touching the payload', async () => {
     const file = new File(['abc'], 'a.bin');
     await store.storeFileHandle(mockHandle(file), 'id-2');
-    await store.updateFileHandleProgress('id-2', 'https://tus/upload/2', 2);
+    await store.updateFileHandleProgress('id-2', { uploadUrl: 'https://tus/upload/2' }, 2);
 
     const handle = await store.getFileHandle('id-2');
-    expect(handle?.tusUploadUrl).toBe('https://tus/upload/2');
+    expect((handle?.resumeData as any)?.uploadUrl).toBe('https://tus/upload/2');
     expect(handle?.bytesUploaded).toBe(2);
     const restored = await store.getFileFromHandleByID('id-2');
     expect(await restored!.text()).toBe('abc');

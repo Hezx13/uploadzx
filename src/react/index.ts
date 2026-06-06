@@ -28,5 +28,5 @@ export type {
   UploadEvents,
   FilePickerOptions,
   StoredFileHandle,
+  QueueOptions,
 } from '../types';
-export type { QueueOptions } from '../core/UploadQueue';
