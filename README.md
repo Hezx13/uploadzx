@@ -14,11 +14,15 @@ A browser-only TypeScript upload library that provides a developer-friendly abst
 - 🚀 **Resumable uploads** using tus protocol
 - 📱 **Cross-browser compatibility** including Safari fallback
 - ⚡ **File System Access API** support for modern browsers
-- 🎯 **React integration** with hooks and components
+- 🎯 **React integration** with granular, per-file subscriptions (no list-wide re-renders)
 - 📊 **Progress tracking** with detailed upload statistics
-- ⏸️ **Pause, resume, and cancel** functionality
-- 💾 **Persistent upload state** using IndexedDB
-- 🔄 **Queue management** for multiple uploads
+- ⏸️ **Pause, resume, and cancel** with a concurrency-capped queue
+- 💾 **Persistent upload state** using IndexedDB (with TTL reaping + quota guards)
+- 🔌 **Pluggable transport & storage** — swap tus for S3/presigned via interfaces
+- 🔔 **Multi-listener events** (`on`/`off`/`once`) plus the classic callback bag
+- 🔑 **Dynamic auth** — headers/metadata can be async functions, refreshed per request
+- ✅ **Built-in validation** — size / type / count enforced before upload
+- 🖥️ **SSR-safe** — construct on the server without touching IndexedDB
 - 🎨 **UI-agnostic design** - bring your own UI or use our React components
 
 ## Installation
@@ -41,30 +45,43 @@ import Uploadzx from 'uploadzx';
 const uploader = new Uploadzx({
   endpoint: 'https://your-tus-endpoint.com/files',
   maxConcurrent: 3,
+  autoStart: true,
+  // Headers/metadata may be a value OR an (async) function, resolved per
+  // request — so a long-paused upload resumes with a fresh token.
+  headers: async () => ({ Authorization: `Bearer ${await getAccessToken()}` }),
+  // Enforced before a file enters the queue.
+  validation: { maxSize: 500 * 1024 * 1024, allowedTypes: ['image/*', 'video/*'] },
   filePickerOptions: {
     multiple: true,
     useFileSystemAccess: true,
-  }
-}, {
-  onProgress: (progress) => {
-    console.log(`${progress.fileId}: ${progress.percentage}%`);
   },
-  onComplete: (fileId, tusUrl) => {
-    console.log(`Upload completed: ${tusUrl}`);
-  },
-  onError: (fileId, error) => {
-    console.error(`Upload error for ${fileId}:`, error);
-  }
 });
+
+// Multi-listener events (each `on` returns an unsubscribe function):
+const off = uploader.on('progress', (p) => console.log(`${p.fileId}: ${p.percentage}%`));
+uploader.on('complete', (fileId, tusUrl) => console.log(`Completed: ${tusUrl}`));
+uploader.on('error', (fileId, err) => console.error(`Error for ${fileId}:`, err));
+
+// Wait for any prior unfinished uploads to load before driving the queue.
+await uploader.ready;
 
 // Pick files and start uploading
 await uploader.pickAndUploadFiles();
 ```
 
+> The classic single-callback bag still works too — pass `{ onProgress, onComplete, onError, onStateChange, onCancel }` as the second constructor argument. Note `onStateChange` receives a single `UploadState` argument.
+
 ### React Integration
 
+Use the focused hooks so a row only re-renders when **its own** file changes:
+
 ```tsx
-import { UploadzxProvider, useUploadzxContext } from 'uploadzx/react';
+import {
+  UploadzxProvider,
+  useUploadzxActions,
+  useUploadStates,
+  useUploadState,
+} from 'uploadzx/react';
 
 function App() {
   return (
@@ -81,16 +98,27 @@ function App() {
 }
 
 function UploadComponent() {
-  const { pickAndUploadFiles, uploadStates } = useUploadzxContext();
-  
+  const { pickAndUploadFiles } = useUploadzxActions();
+  // The record of ids; rows subscribe to their own state individually.
+  const { uploadStates } = useUploadStates();
+
   return (
     <div>
       <button onClick={pickAndUploadFiles}>Upload Files</button>
-      {Object.entries(uploadStates).map(([fileId, state]) => (
-        <div key={fileId}>
-          {state.file.name} - {state.status} - {state.progress?.percentage}%
-        </div>
+      {Object.keys(uploadStates).map((fileId) => (
+        <UploadRow key={fileId} fileId={fileId} />
       ))}
+    </div>
+  );
+}
+
+function UploadRow({ fileId }: { fileId: string }) {
+  // Granular subscription — re-renders only when THIS file changes.
+  const state = useUploadState(fileId);
+  if (!state) return null;
+  return (
+    <div>
+      {state.file.name} - {state.status} - {state.progress.percentage}%
     </div>
   );
 }
@@ -98,10 +126,16 @@ function UploadComponent() {
 
 ## React Hooks
 
-- `useUploadzxContext()` - Access upload context and state
-- `useUploadItem(fileId, state)` - Manage individual upload items
-- `useQueueActions()` - Queue management actions
+- `useUploadzxActions()` - Queue actions (pick, add, pause, resume, cancel, ...)
+- `useUploadStates()` - Live record of all upload states
+- `useUploadState(fileId)` - Granular per-file subscription (preferred for rows)
+- `useUploadItem(fileId)` - Per-item state + pause/resume/cancel handlers
+- `useQueueActions()` - Queue-level actions and stats
+- `useUnfinishedUploads()` - Resumable uploads recovered from storage
 - `useFilePicker(options)` - File picking functionality
+- `useUploadStore()` - Access the raw external store (advanced)
+
+> `useUploadzxContext()` still exists but is **deprecated** — prefer the focused hooks above.
 
 ## React Components
 
@@ -118,6 +152,20 @@ interface UploadzxOptions {
   chunkSize?: number;
   maxConcurrent?: number;
   autoStart?: boolean;
+  retryDelays?: number[];
+  // Static value OR an (async) factory resolved per request.
+  headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);
+  metadata?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);
+  // Enforced before a file enters the queue.
+  validation?: { maxSize?: number; allowedTypes?: string[]; maxFiles?: number };
+  // Max age (ms) of persisted records before they're reaped on init. Default 7 days; 0 disables.
+  persistenceTtlMs?: number;
+  // Pluggable backends.
+  uploaderFactory?: UploaderFactory;     // swap tus for S3/presigned/...
+  store?: PersistenceAdapter;            // swap IndexedDB for a custom store
+  // Diagnostics (off by default — the library does not log otherwise).
+  debug?: boolean;
+  logger?: Partial<{ debug: Function; warn: Function; error: Function }>;
   filePickerOptions?: {
     multiple?: boolean;
     useFileSystemAccess?: boolean;
@@ -126,16 +174,38 @@ interface UploadzxOptions {
 }
 ```
 
-### Event Handlers
+### Events
+
+Subscribe with `on` / `once` (each returns an unsubscribe function) or `off`:
 
 ```typescript
-interface UploadzxEvents {
+const off = uploader.on('progress', (p: UploadProgress) => {});
+uploader.on('stateChange', (s: UploadState) => {});
+uploader.on('complete', (fileId: string, tusUrl: string) => {});
+uploader.on('error', (fileId: string, error: Error) => {});
+uploader.on('cancel', (fileId: string) => {});
+off(); // unsubscribe
+```
+
+The legacy callback bag passed to the constructor is also supported:
+
+```typescript
+interface UploadEvents {
   onProgress?: (progress: UploadProgress) => void;
+  onStateChange?: (state: UploadState) => void; // single argument
   onComplete?: (fileId: string, tusUrl: string) => void;
   onError?: (fileId: string, error: Error) => void;
-  onStateChange?: (fileId: string, state: UploadState) => void;
+  onCancel?: (fileId: string) => void;
 }
 ```
+
+### Readiness
+
+`Uploadzx` loads any previously persisted unfinished uploads asynchronously. Await `uploader.ready` (resolves on success, rejects on init failure) before relying on `getUnfinishedUploads()`.
+
+### Custom transport
+
+Implement the `Uploader` interface and pass an `uploaderFactory` to upload anywhere (S3 multipart, a presigned `PUT`, etc.) while keeping the queue, persistence, progress, and React layers unchanged.
 
 ## Browser Support
 
@@ -170,6 +240,9 @@ pnpm build
 
 # Watch for changes
 pnpm dev
+
+# Run the test suite (Vitest + fake-indexeddb)
+pnpm test
 
 # Run examples
 pnpm example:react

@@ -1,20 +1,22 @@
-import { useEffect, useState } from 'react';
-import type { UploadProgress } from '../../types';
+import type { UploadProgress, UploadStatus } from '../../types';
+import { useUploadSelector } from './useUploadState';
 
-export function useUploadProgress(
-  uploadStates: Record<string, any>,
-  fileId: string
-): UploadProgress | null {
-  const [progress, setProgress] = useState<UploadProgress | null>(null);
+/**
+ * Subscribe to a single file's progress. Re-renders only on that file's progress
+ * changes — not on any other file, and not on this file's non-progress changes.
+ *
+ * Note: the signature changed from `(uploadStates, fileId)` to `(fileId)`. The
+ * old form forced you to read the entire states record (via `useUploadStates`),
+ * which re-renders on every tick of every file. This form subscribes granularly.
+ */
+export function useUploadProgress(fileId: string): UploadProgress | null {
+  return useUploadSelector(fileId, s => s?.progress ?? null);
+}
 
-  useEffect(() => {
-    const state = uploadStates[fileId];
-    if (state?.progress) {
-      setProgress(state.progress);
-    } else {
-      setProgress(null);
-    }
-  }, [uploadStates, fileId]);
-
-  return progress;
+/**
+ * Subscribe to just a file's status. A component that only renders controls
+ * (pause/resume/cancel) can use this and avoid re-rendering on progress ticks.
+ */
+export function useUploadStatus(fileId: string): UploadStatus | null {
+  return useUploadSelector(fileId, s => s?.status ?? null);
 }

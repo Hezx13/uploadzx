@@ -1,44 +1,76 @@
 // Export types
 export * from './types';
+export * from './transport/types';
 
 // Export core modules
 export { FilePicker } from './core/FilePicker';
-export { TusUploader } from './core/TusUploader';
-export { UploadQueue, type QueueOptions } from './core/UploadQueue';
+export {
+  UploadQueue,
+  type UploadQueueConstructorOptions,
+  type UploaderFactory,
+} from './core/UploadQueue';
 export { FileHandleStore } from './core/FileHandleStore';
+
+// Export transport drivers and utilities
+export { UploadController } from './transport/UploadController';
+export { ProgressTracker } from './transport/ProgressTracker';
+export { TusDriver, tus, type TusDriverOptions, type TusResumeData } from './transport/TusDriver';
+export { HttpPutDriver, httpPut, type HttpPutDriverOptions } from './transport/HttpPutDriver';
 
 export * from './utils';
 
 // Main library class
 import { FilePicker } from './core/FilePicker';
-import { TusUploaderOptions } from './core/TusUploader';
-import { UploadQueue, QueueOptions } from './core/UploadQueue';
-import { FilePickerOptions, StoredFileHandle, UploadEvents } from './types';
+import { UploadQueue } from './core/UploadQueue';
+import {
+  FilePickerOptions,
+  StoredFileHandle,
+  UploadEvents,
+  UploadEventMap,
+  UploadFile,
+  QueueOptions,
+} from './types';
 
 export interface UploadzxOptions extends QueueOptions {
   filePickerOptions?: FilePickerOptions;
-  tusOptions?: TusUploaderOptions;
 }
 
 export class Uploadzx {
   private filePicker: FilePicker;
   private uploadQueue: UploadQueue;
-  private tusOptions?: TusUploaderOptions;
+
+  /** Resolves once prior unfinished uploads are loaded; rejects on init failure. */
+  public readonly ready: Promise<void>;
 
   constructor(options: UploadzxOptions, events: UploadEvents = {}) {
     this.filePicker = new FilePicker(options.filePickerOptions);
     this.uploadQueue = new UploadQueue(options, events);
-    this.tusOptions = options.tusOptions;
+    this.ready = this.uploadQueue.ready;
   }
 
   getIsInitialized(): boolean {
     return this.uploadQueue.getIsInitialized();
   }
 
-  async pickAndUploadFiles(tusOptions?: TusUploaderOptions): Promise<void> {
+  /** Subscribe to an upload event. Returns an unsubscribe function. */
+  on<K extends keyof UploadEventMap>(event: K, listener: UploadEventMap[K]): () => void {
+    return this.uploadQueue.on(event, listener);
+  }
+
+  /** Subscribe to a single occurrence of an upload event. */
+  once<K extends keyof UploadEventMap>(event: K, listener: UploadEventMap[K]): () => void {
+    return this.uploadQueue.once(event, listener);
+  }
+
+  /** Remove a previously registered listener. */
+  off<K extends keyof UploadEventMap>(event: K, listener: UploadEventMap[K]): void {
+    this.uploadQueue.off(event, listener);
+  }
+
+  async pickAndUploadFiles(): Promise<void> {
     const files = await this.filePicker.pickFiles();
     if (files.length > 0) {
-      await this.uploadQueue.addFiles(files, tusOptions || this.tusOptions);
+      await this.uploadQueue.addFiles(files);
     }
   }
 
@@ -46,8 +78,8 @@ export class Uploadzx {
     return this.filePicker.pickFiles();
   }
 
-  async addFiles(files: any[], tusOptions?: TusUploaderOptions) {
-    return this.uploadQueue.addFiles(files, tusOptions || this.tusOptions);
+  async addFiles(files: UploadFile[]) {
+    return this.uploadQueue.addFiles(files);
   }
 
   async startUploads() {
@@ -63,7 +95,6 @@ export class Uploadzx {
   }
 
   async cancelAll() {
-    console.log('cancelAll');
     return this.uploadQueue.cancelAll();
   }
 
@@ -79,11 +110,8 @@ export class Uploadzx {
     return this.uploadQueue.cancelUpload(fileId);
   }
 
-  async restoreUnfinishedUpload(
-    fileHandleOrId: StoredFileHandle | string,
-    tusOpts?: TusUploaderOptions
-  ) {
-    return this.uploadQueue.restoreUnfinishedUpload(fileHandleOrId, tusOpts || this.tusOptions);
+  async restoreUnfinishedUpload(fileHandleOrId: StoredFileHandle | string) {
+    return this.uploadQueue.restoreUnfinishedUpload(fileHandleOrId);
   }
 
   async clearCompletedUploads() {
@@ -107,6 +135,15 @@ export class Uploadzx {
 
   async getUnfinishedUploads() {
     return this.uploadQueue.getUnfinishedUploads();
+  }
+
+  /**
+   * Detach all event listeners. Call when disposing the instance (e.g. on React
+   * unmount) so the emitter doesn't retain handlers into a torn-down consumer.
+   * In-flight transfers are not cancelled.
+   */
+  destroy(): void {
+    this.uploadQueue.destroy();
   }
 }
 

@@ -70,15 +70,11 @@ export function UploadDropzone({
             type: file.type,
           }));
 
-          console.log(`Dropped ${uploadFiles.length} files with handles:`, uploadFiles);
-
           onFilesDrop?.(uploadFiles);
           await addFiles(uploadFiles);
         }
-      } catch (error) {
-        console.error('Error processing dropped files:', error);
-
-        // Fallback to the old method if the new one fails
+      } catch {
+        // Fallback to the old method if handle extraction fails
         const files = Array.from(e.dataTransfer.files);
         if (files.length > 0) {
           const uploadFiles: UploadFile[] = files.map((file: File) => ({
@@ -99,7 +95,7 @@ export function UploadDropzone({
 
   const handleClick = useCallback(() => {
     pickAndUploadFiles();
-  }, []);
+  }, [pickAndUploadFiles]);
 
   const combinedClassName = `${className} ${isDragActive ? activeClassName : ''}`.trim();
 
