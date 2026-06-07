@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Uploadzx, UploadzxOptions, UploadEvents } from '../../index';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Uploadzx, UploadzxOptions } from '../../index';
 import type { StoredFileHandle, UploadFile, UploadProgress, UploadState } from '../../types';
 import { UploadStore } from '../UploadStore';
 
@@ -12,184 +12,185 @@ export interface UseUploadzxOptions extends UploadzxOptions {
   onCancel?: (fileId: string) => void;
 }
 
-export function useUploadzx(options: UseUploadzxOptions) {
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [queueStats, setQueueStats] = useState({ queueLength: 0, activeCount: 0 });
-  const [unfinishedUploads, setUnfinishedUploads] = useState<StoredFileHandle[]>([]);
+/**
+ * Stable action surface for an Uploadzx instance. Every method keeps a stable
+ * identity for the lifetime of the hook, so it can live in context without ever
+ * causing a re-render.
+ */
+export interface UploadzxActions {
+  pickAndUploadFiles: () => Promise<void>;
+  pickFiles: () => Promise<UploadFile[]>;
+  addFiles: (files: UploadFile[]) => Promise<void>;
+  startUploads: () => Promise<void>;
+  pauseAll: () => Promise<void>;
+  resumeAll: () => Promise<void>;
+  cancelAll: () => Promise<void>;
+  pauseUpload: (fileId: string) => Promise<void>;
+  resumeUpload: (fileId: string) => Promise<void>;
+  cancelUpload: (fileId: string) => Promise<void>;
+  getUploadState: (fileId: string) => UploadState | null;
+  getAllStates: () => UploadState[];
+  clearCompletedUploads: () => void;
+  restoreUnfinishedUpload: (fileHandleOrId: StoredFileHandle | string) => Promise<void>;
+}
 
-  const uploadzxRef = useRef<Uploadzx | null>(null);
-  const mountedRef = useRef<boolean>(true);
-  // External store for per-file state so components subscribe granularly instead
-  // of re-rendering the whole list on every progress tick.
+export interface UseUploadzxResult {
+  store: UploadStore;
+  actions: UploadzxActions;
+}
+
+/**
+ * Owns a single Uploadzx core instance and the external {@link UploadStore} that
+ * mirrors its reactive state. All store updates are driven by the core's event
+ * emitter (the single source of truth), so derived values like queue stats can
+ * never go stale the way a pull-based "sync after each action" approach does.
+ *
+ * Returns only stable references (`store`, `actions`). Dynamic state is read
+ * through the store via selector hooks, not returned from here — so nothing that
+ * consumes this hook re-renders on a progress tick.
+ */
+export function useUploadzx(options: UseUploadzxOptions): UseUploadzxResult {
+  // One store per hook instance, created lazily and kept for the lifetime.
   const storeRef = useRef<UploadStore>();
   if (!storeRef.current) {
     storeRef.current = new UploadStore();
   }
   const store = storeRef.current;
 
-  // Keep the latest user callbacks in a ref so the core's event handlers stay
-  // stable (constructed once) without going stale.
+  const coreRef = useRef<Uploadzx | null>(null);
+
+  // Latest user callbacks behind a ref so the core (and its listeners) are
+  // constructed exactly once without going stale.
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  const events: UploadEvents = useMemo(
-    () => ({
-      onProgress: progress => optionsRef.current.onProgress?.(progress),
-      onStateChange: (state: UploadState) => {
-        if (!mountedRef.current) return;
-        store.setState(state);
-        setUnfinishedUploads(prev =>
-          prev.some(upload => upload.id === state.fileId)
-            ? prev.filter(upload => upload.id !== state.fileId)
-            : prev
-        );
-        optionsRef.current.onStateChange?.(state);
-      },
-      onComplete: (fileId, url) => optionsRef.current.onComplete?.(fileId, url),
-      onError: (fileId, error) => optionsRef.current.onError?.(fileId, error),
-      onCancel: fileId => optionsRef.current.onCancel?.(fileId),
-    }),
-    [store]
-  );
-
   useEffect(() => {
-    mountedRef.current = true;
+    let disposed = false;
 
-    if (!uploadzxRef.current) {
-      uploadzxRef.current = new Uploadzx(
-        {
-          ...optionsRef.current,
-          onInit: async () => {
-            if (!mountedRef.current) return;
-            setIsInitialized(true);
-            try {
-              const uploads = (await uploadzxRef.current?.getUnfinishedUploads()) ?? [];
-              if (mountedRef.current) {
-                setUnfinishedUploads(uploads);
-                const stats = uploadzxRef.current?.getQueueStats();
-                if (stats) setQueueStats(stats);
-              }
-            } catch (error) {
-              optionsRef.current.logger?.error?.('Error fetching unfinished uploads:', error);
-            }
-            optionsRef.current.onInit?.();
-          },
-        },
-        events
-      );
-    }
+    const core = new Uploadzx({
+      ...optionsRef.current,
+      onInit: async () => {
+        if (disposed) return;
+        store.setInitialized(true);
+        try {
+          const uploads = (await core.getUnfinishedUploads()) ?? [];
+          if (!disposed) {
+            store.setUnfinished(uploads);
+            store.setStats(core.getQueueStats());
+          }
+        } catch (error) {
+          optionsRef.current.logger?.error?.('Error fetching unfinished uploads:', error);
+        }
+        optionsRef.current.onInit?.();
+      },
+    });
+    coreRef.current = core;
+
+    const syncStats = () => store.setStats(core.getQueueStats());
+
+    // Event-driven: the core emitter is the single source of truth. Each handler
+    // updates the store and forwards to the user's callback. Stats are recomputed
+    // on every relevant event, so they stay correct even when the queue advances
+    // itself (e.g. a completion frees a slot for a queued upload).
+    const unsubscribers = [
+      core.on('progress', progress => optionsRef.current.onProgress?.(progress)),
+      core.on('stateChange', state => {
+        store.setState(state);
+        // Once a file is in the active set it's no longer a pending "unfinished".
+        store.removeUnfinished(state.fileId);
+        syncStats();
+        optionsRef.current.onStateChange?.(state);
+      }),
+      core.on('complete', (fileId, url) => {
+        // Release completed state (and its File) instead of hoarding it.
+        store.remove(fileId);
+        syncStats();
+        optionsRef.current.onComplete?.(fileId, url);
+      }),
+      core.on('error', (fileId, error) => {
+        syncStats();
+        optionsRef.current.onError?.(fileId, error);
+      }),
+      core.on('cancel', fileId => {
+        store.remove(fileId);
+        syncStats();
+        optionsRef.current.onCancel?.(fileId);
+      }),
+    ];
 
     return () => {
-      mountedRef.current = false;
-      uploadzxRef.current = null;
-      store.clear();
-      setIsInitialized(false);
-      setQueueStats({ queueLength: 0, activeCount: 0 });
-      setUnfinishedUploads([]);
+      disposed = true;
+      unsubscribers.forEach(off => off());
+      core.destroy();
+      coreRef.current = null;
+      store.reset();
     };
     // Constructed once; latest callbacks are read through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [store]);
 
-  const syncStats = useCallback(() => {
-    const stats = uploadzxRef.current?.getQueueStats();
-    if (stats) setQueueStats(stats);
-  }, []);
+  // --- actions (stable identities) -----------------------------------------
 
   const pickAndUploadFiles = useCallback(async () => {
-    if (!uploadzxRef.current) return;
-    await uploadzxRef.current.pickAndUploadFiles();
-    syncStats();
-  }, [syncStats]);
-
-  const pickFiles = useCallback(async () => {
-    if (!uploadzxRef.current) return [];
-    return uploadzxRef.current.pickFiles();
+    await coreRef.current?.pickAndUploadFiles();
   }, []);
 
-  const addFiles = useCallback(
-    async (files: UploadFile[]) => {
-      if (!uploadzxRef.current) return;
-      await uploadzxRef.current.addFiles(files);
-      syncStats();
-    },
-    [syncStats]
-  );
+  const pickFiles = useCallback(async () => coreRef.current?.pickFiles() ?? [], []);
+
+  const addFiles = useCallback(async (files: UploadFile[]) => {
+    await coreRef.current?.addFiles(files);
+  }, []);
 
   const startUploads = useCallback(async () => {
-    if (!uploadzxRef.current) return;
-    await uploadzxRef.current.startUploads();
-    syncStats();
-  }, [syncStats]);
+    await coreRef.current?.startUploads();
+  }, []);
 
   const pauseAll = useCallback(async () => {
-    await uploadzxRef.current?.pauseAll();
-    syncStats();
-  }, [syncStats]);
+    await coreRef.current?.pauseAll();
+  }, []);
 
   const resumeAll = useCallback(async () => {
-    await uploadzxRef.current?.resumeAll();
-    syncStats();
-  }, [syncStats]);
+    await coreRef.current?.resumeAll();
+  }, []);
 
   const cancelAll = useCallback(async () => {
-    await uploadzxRef.current?.cancelAll();
-    syncStats();
-  }, [syncStats]);
+    await coreRef.current?.cancelAll();
+  }, []);
 
-  const pauseUpload = useCallback(
-    async (fileId: string) => {
-      await uploadzxRef.current?.pauseUpload(fileId);
-      syncStats();
-    },
-    [syncStats]
-  );
+  const pauseUpload = useCallback(async (fileId: string) => {
+    await coreRef.current?.pauseUpload(fileId);
+  }, []);
 
-  const resumeUpload = useCallback(
-    async (fileId: string) => {
-      await uploadzxRef.current?.resumeUpload(fileId);
-      syncStats();
-    },
-    [syncStats]
-  );
+  const resumeUpload = useCallback(async (fileId: string) => {
+    await coreRef.current?.resumeUpload(fileId);
+  }, []);
 
-  const cancelUpload = useCallback(
-    async (fileId: string) => {
-      await uploadzxRef.current?.cancelUpload(fileId);
-      store.remove(fileId);
-      syncStats();
-    },
-    [store, syncStats]
-  );
+  const cancelUpload = useCallback(async (fileId: string) => {
+    await coreRef.current?.cancelUpload(fileId);
+  }, []);
 
   const getUploadState = useCallback(
-    (fileId: string) => uploadzxRef.current?.getUploadState(fileId) ?? null,
+    (fileId: string) => coreRef.current?.getUploadState(fileId) ?? null,
     []
   );
 
-  const getAllStates = useCallback(() => uploadzxRef.current?.getAllStates() ?? [], []);
+  const getAllStates = useCallback(() => coreRef.current?.getAllStates() ?? [], []);
 
   const clearCompletedUploads = useCallback(() => {
-    uploadzxRef.current?.clearCompletedUploads();
+    coreRef.current?.clearCompletedUploads();
   }, []);
 
   const restoreUnfinishedUpload = useCallback(
     async (fileHandleOrId: StoredFileHandle | string) => {
-      if (!uploadzxRef.current) return;
-      await uploadzxRef.current.restoreUnfinishedUpload(fileHandleOrId);
+      await coreRef.current?.restoreUnfinishedUpload(fileHandleOrId);
       const id = typeof fileHandleOrId === 'string' ? fileHandleOrId : fileHandleOrId.id;
-      setUnfinishedUploads(prev => prev.filter(upload => upload.id !== id));
-      syncStats();
+      store.removeUnfinished(id);
     },
-    [syncStats]
+    [store]
   );
 
-  return useMemo(
+  const actions = useMemo<UploadzxActions>(
     () => ({
-      store,
-      isInitialized,
-      queueStats,
-      unfinishedUploads,
       pickAndUploadFiles,
       pickFiles,
       addFiles,
@@ -202,14 +203,10 @@ export function useUploadzx(options: UseUploadzxOptions) {
       cancelUpload,
       getUploadState,
       getAllStates,
-      restoreUnfinishedUpload,
       clearCompletedUploads,
+      restoreUnfinishedUpload,
     }),
     [
-      store,
-      isInitialized,
-      queueStats,
-      unfinishedUploads,
       pickAndUploadFiles,
       pickFiles,
       addFiles,
@@ -222,10 +219,12 @@ export function useUploadzx(options: UseUploadzxOptions) {
       cancelUpload,
       getUploadState,
       getAllStates,
-      restoreUnfinishedUpload,
       clearCompletedUploads,
+      restoreUnfinishedUpload,
     ]
   );
+
+  return useMemo(() => ({ store, actions }), [store, actions]);
 }
 
 export default useUploadzx;

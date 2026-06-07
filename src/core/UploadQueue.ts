@@ -303,6 +303,14 @@ export class UploadQueue {
     return this.resumeUnfinishedUpload(fileHandleOrId);
   }
 
+  /**
+   * Detach all event listeners. Does not cancel in-flight uploads; it only stops
+   * this queue from emitting into now-stale subscribers.
+   */
+  destroy(): void {
+    this.emitter.removeAll();
+  }
+
   /** Adds a file id to the pending queue if it isn't already queued. */
   private enqueue(fileId: string): void {
     if (!this.queue.includes(fileId) && !this.activeUploads.has(fileId)) {
@@ -422,9 +430,7 @@ export class UploadQueue {
     );
   }
 
-  private async resumeUnfinishedUpload(
-    fileHandleOrId: StoredFileHandle | string
-  ): Promise<void> {
+  private async resumeUnfinishedUpload(fileHandleOrId: StoredFileHandle | string): Promise<void> {
     let id: string;
     let fileHandle: StoredFileHandle | undefined;
 

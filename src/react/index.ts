@@ -1,7 +1,8 @@
 // React hooks and components for uploadzx
-export { useUploadzx } from './hooks/useUploadzx';
-export { useUploadState } from './hooks/useUploadState';
-export { useUploadProgress } from './hooks/useUploadProgress';
+export { useUploadzx, type UseUploadzxResult } from './hooks/useUploadzx';
+export { useUploadState, useUploadSelector } from './hooks/useUploadState';
+export { useUploadProgress, useUploadStatus } from './hooks/useUploadProgress';
+export { useStoreSelector } from './hooks/useStoreSelector';
 export { useFilePicker } from './hooks/useFilePicker';
 export { useUploadItem } from './hooks/useUploadItem';
 export { useQueueActions } from './hooks/useQueueActions';
@@ -17,7 +18,7 @@ export {
   type UploadzxActions,
 } from './components/UploadzxProvider';
 export { UploadDropzone } from './components/UploadDropzone';
-export { UploadStore } from './UploadStore';
+export { UploadStore, type QueueStats } from './UploadStore';
 
 // Re-export core types for convenience
 export type {

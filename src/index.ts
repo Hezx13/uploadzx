@@ -4,7 +4,11 @@ export * from './transport/types';
 
 // Export core modules
 export { FilePicker } from './core/FilePicker';
-export { UploadQueue, type UploadQueueConstructorOptions, type UploaderFactory } from './core/UploadQueue';
+export {
+  UploadQueue,
+  type UploadQueueConstructorOptions,
+  type UploaderFactory,
+} from './core/UploadQueue';
 export { FileHandleStore } from './core/FileHandleStore';
 
 // Export transport drivers and utilities
@@ -131,6 +135,15 @@ export class Uploadzx {
 
   async getUnfinishedUploads() {
     return this.uploadQueue.getUnfinishedUploads();
+  }
+
+  /**
+   * Detach all event listeners. Call when disposing the instance (e.g. on React
+   * unmount) so the emitter doesn't retain handlers into a torn-down consumer.
+   * In-flight transfers are not cancelled.
+   */
+  destroy(): void {
+    this.uploadQueue.destroy();
   }
 }
 

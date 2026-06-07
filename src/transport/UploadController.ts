@@ -194,8 +194,7 @@ export class UploadController implements Uploader {
   canResume(): boolean {
     // Only resumable transports can genuinely continue from a checkpoint.
     return (
-      this.driver.resumable &&
-      (this.machine.status === 'paused' || this.machine.status === 'error')
+      this.driver.resumable && (this.machine.status === 'paused' || this.machine.status === 'error')
     );
   }
 

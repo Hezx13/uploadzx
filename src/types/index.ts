@@ -155,7 +155,11 @@ export interface PersistenceAdapter {
   getFileHandle(id: string): Promise<StoredFileHandle | null>;
   getAllFileHandles(): Promise<StoredFileHandle[]>;
   removeFileHandle(id: string): Promise<void>;
-  updateFileHandleProgress(id: string, resumeData: ResumeData | undefined, bytesUploaded: number): Promise<void>;
+  updateFileHandleProgress(
+    id: string,
+    resumeData: ResumeData | undefined,
+    bytesUploaded: number
+  ): Promise<void>;
   getFileFromHandleByID(id: string): Promise<File | null>;
   clear(): Promise<void>;
   /** Optional: delete persisted records older than `maxAgeMs`. */

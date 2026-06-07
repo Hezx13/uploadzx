@@ -159,6 +159,20 @@ describe('UploadQueue events (emitter)', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(queue.getActiveCount()).toBe(0);
   });
+
+  it('destroy() detaches all listeners so no further events fire', async () => {
+    const queue = new UploadQueue({ ...baseOpts(), autoStart: true });
+    await queue.ready;
+    const onComplete = vi.fn();
+    queue.on('complete', onComplete);
+    await queue.addFiles([makeUploadFile({ id: 'd1' })]);
+
+    queue.destroy();
+
+    FakeUploader.instances[0].complete('https://done/d1');
+    await tick();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
 });
 
 describe('UploadQueue persistence', () => {

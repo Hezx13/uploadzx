@@ -89,8 +89,5 @@ export interface UploadDriver<R extends ResumeData = ResumeData> {
    * The driver should initialize any protocol-specific state, but NOT start the transfer.
    * The returned session's start() method will be called to begin/resume.
    */
-  createSession(
-    ctx: UploadDriverContext<R>,
-    handlers: UploadDriverHandlers<R>
-  ): UploadSession;
+  createSession(ctx: UploadDriverContext<R>, handlers: UploadDriverHandlers<R>): UploadSession;
 }

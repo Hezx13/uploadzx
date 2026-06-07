@@ -119,11 +119,7 @@ class TusSession implements UploadSession {
       },
     };
 
-    this.ctx.signal.addEventListener(
-      'abort',
-      () => this.upload?.abort(),
-      { once: true }
-    );
+    this.ctx.signal.addEventListener('abort', () => this.upload?.abort(), { once: true });
 
     this.upload = new Upload(this.ctx.file, uploadOptions);
 

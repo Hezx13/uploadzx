@@ -68,4 +68,71 @@ describe('UploadStore', () => {
     store.setState(state('a'));
     expect(a).not.toHaveBeenCalled();
   });
+
+  describe('queue stats', () => {
+    it('notifies on change and bails when unchanged', () => {
+      const store = new UploadStore();
+      const l = vi.fn();
+      store.subscribeStats(l);
+
+      store.setStats({ queueLength: 2, activeCount: 1 });
+      expect(l).toHaveBeenCalledTimes(1);
+      expect(store.getStats()).toEqual({ queueLength: 2, activeCount: 1 });
+
+      // Same numbers → no notification.
+      store.setStats({ queueLength: 2, activeCount: 1 });
+      expect(l).toHaveBeenCalledTimes(1);
+
+      store.setStats({ queueLength: 2, activeCount: 0 });
+      expect(l).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('unfinished uploads', () => {
+    const handle = (id: string) => ({ id }) as any;
+
+    it('sets, notifies, and removes; bails when removing an absent id', () => {
+      const store = new UploadStore();
+      const l = vi.fn();
+      store.subscribeUnfinished(l);
+
+      store.setUnfinished([handle('a'), handle('b')]);
+      expect(l).toHaveBeenCalledTimes(1);
+
+      store.removeUnfinished('zzz'); // absent → no notify
+      expect(l).toHaveBeenCalledTimes(1);
+
+      store.removeUnfinished('a');
+      expect(l).toHaveBeenCalledTimes(2);
+      expect(store.getUnfinished().map(u => u.id)).toEqual(['b']);
+    });
+  });
+
+  describe('init flag', () => {
+    it('notifies once per real change', () => {
+      const store = new UploadStore();
+      const l = vi.fn();
+      store.subscribeInitialized(l);
+
+      store.setInitialized(true);
+      store.setInitialized(true); // unchanged → no notify
+      expect(l).toHaveBeenCalledTimes(1);
+      expect(store.getInitialized()).toBe(true);
+    });
+  });
+
+  it('reset() clears every section', () => {
+    const store = new UploadStore();
+    store.setState(state('a'));
+    store.setStats({ queueLength: 1, activeCount: 1 });
+    store.setUnfinished([{ id: 'x' } as any]);
+    store.setInitialized(true);
+
+    store.reset();
+
+    expect(store.getState('a')).toBeNull();
+    expect(store.getStats()).toEqual({ queueLength: 0, activeCount: 0 });
+    expect(store.getUnfinished()).toEqual([]);
+    expect(store.getInitialized()).toBe(false);
+  });
 });

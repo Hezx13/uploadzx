@@ -44,8 +44,7 @@ export class ProgressTracker {
    * Update progress and calculate percentage and speed.
    */
   updateProgress(bytesUploaded: number, bytesTotal: number): ProgressSnapshot {
-    const percentage =
-      bytesTotal > 0 ? Number(((bytesUploaded / bytesTotal) * 100).toFixed(2)) : 0;
+    const percentage = bytesTotal > 0 ? Number(((bytesUploaded / bytesTotal) * 100).toFixed(2)) : 0;
 
     let bytesPerSecond = this.lastSpeed;
 
