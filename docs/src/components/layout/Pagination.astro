@@ -1,0 +1,77 @@
+---
+import { getAdjacent, docHref } from '../../lib/navigation';
+
+interface Props {
+  slug: string;
+}
+const { slug } = Astro.props;
+const { prev, next } = getAdjacent(slug);
+---
+
+<nav class="pager" aria-label="Pagination">
+  {
+    prev ? (
+      <a class="pager__link pager__link--prev" href={docHref(prev.slug)}>
+        <span class="pager__dir">← Previous</span>
+        <span class="pager__title">{prev.title}</span>
+      </a>
+    ) : (
+      <span />
+    )
+  }
+  {
+    next && (
+      <a class="pager__link pager__link--next" href={docHref(next.slug)}>
+        <span class="pager__dir">Next →</span>
+        <span class="pager__title">{next.title}</span>
+      </a>
+    )
+  }
+</nav>
+
+<style>
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+    margin-top: var(--space-16);
+    padding-top: var(--space-8);
+    border-top: var(--border-width) solid var(--color-border-strong);
+  }
+  .pager__link {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4) var(--space-5);
+    border: var(--border-width) solid var(--color-border-strong);
+    transition:
+      background var(--dur-fast),
+      border-color var(--dur-fast);
+  }
+  .pager__link:hover {
+    border-color: var(--color-accent);
+    background: var(--color-surface);
+  }
+  .pager__link--next {
+    text-align: right;
+    align-items: flex-end;
+  }
+  .pager__dir {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--color-text-faint);
+  }
+  .pager__title {
+    font-family: var(--font-display);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text);
+  }
+
+  @media (max-width: 600px) {
+    .pager {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

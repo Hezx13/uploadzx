@@ -1,5 +1,5 @@
 import { Tabs } from '@base-ui/react/tabs'
-import type { UploadState } from 'uploadzx/react'
+import { useMemo } from 'react'
 import { ActivityPanel } from './ActivityPanel'
 import { DropzonePanel } from './DropzonePanel'
 import { QueueToolbar } from './QueueToolbar'
@@ -11,16 +11,26 @@ interface UploadWorkspaceProps {
   activeView: DashboardView
   compactRows: boolean
   metrics: UploadMetrics
-  uploads: Array<[string, UploadState]>
+  ids: string[]
   onViewChange: (view: DashboardView) => void
 }
 
-export function UploadWorkspace({ activeView, compactRows, metrics, uploads, onViewChange }: UploadWorkspaceProps) {
+export function UploadWorkspace({
+  activeView,
+  compactRows,
+  metrics,
+  ids,
+  onViewChange,
+}: UploadWorkspaceProps) {
+  // Preview list for the Upload tab. Memoized so it only changes when the id set
+  // changes, keeping ActivityPanel's props referentially stable across ticks.
+  const previewIds = useMemo(() => ids.slice(0, 5), [ids])
+
   return (
     <Tabs.Root
       className={styles.workspace}
       value={activeView}
-      onValueChange={(value) => onViewChange(value as DashboardView)}
+      onValueChange={value => onViewChange(value as DashboardView)}
     >
       <div className={styles.workspaceBar}>
         <Tabs.List className={styles.tabsList} aria-label="Dashboard views">
@@ -43,12 +53,12 @@ export function UploadWorkspace({ activeView, compactRows, metrics, uploads, onV
       <Tabs.Panel className={styles.tabPanel} value="upload" keepMounted>
         <div className={styles.workspaceGrid}>
           <DropzonePanel />
-          <ActivityPanel uploads={uploads.slice(0, 5)} compactRows={compactRows} />
+          <ActivityPanel ids={previewIds} compactRows={compactRows} />
         </div>
       </Tabs.Panel>
 
       <Tabs.Panel className={styles.tabPanel} value="activity" keepMounted>
-        <ActivityPanel uploads={uploads} compactRows={compactRows} />
+        <ActivityPanel ids={ids} compactRows={compactRows} />
       </Tabs.Panel>
 
       <Tabs.Panel className={styles.tabPanel} value="recovery" keepMounted>

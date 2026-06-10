@@ -1,0 +1,277 @@
+/* =============================================================================
+   PROSE — styling for rendered Markdown/MDX content (applied to `.prose`).
+   Token-only; mirrors the site's brutalist identity (square corners, hard
+   rules, mono labels, single accent).
+   ============================================================================ */
+
+.prose {
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--color-text-muted);
+}
+
+/* ---- Headings ---- */
+.prose h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  line-height: var(--lh-tight);
+  color: var(--color-text);
+  margin: 0 0 var(--space-4);
+}
+.prose h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  line-height: var(--lh-tight);
+  color: var(--color-text);
+  margin: var(--space-12) 0 var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--border-width) solid var(--color-border-strong);
+  scroll-margin-top: calc(var(--layout-bar-h) + var(--space-5));
+}
+.prose h3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  color: var(--color-text);
+  margin: var(--space-10) 0 var(--space-3);
+  scroll-margin-top: calc(var(--layout-bar-h) + var(--space-5));
+}
+.prose h4 {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-text);
+  margin: var(--space-8) 0 var(--space-2);
+  padding-left: var(--space-4);
+  position: relative;
+}
+.prose h4::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.15em;
+  bottom: 0.15em;
+  width: var(--border-width-accent);
+  background: var(--color-accent);
+}
+
+/* Anchored headings (rehype autolink could be added later) */
+.prose :is(h2, h3) > a {
+  color: inherit;
+}
+
+/* ---- Text ---- */
+.prose p {
+  margin: 0 0 var(--space-4);
+}
+.prose strong {
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
+}
+.prose a {
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+  background-image: linear-gradient(var(--color-accent), var(--color-accent));
+  background-size: 0% 1.5px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition:
+    background-size var(--dur) var(--ease),
+    color var(--dur-fast);
+}
+.prose a:hover {
+  color: var(--color-accent);
+  background-size: 100% 1.5px;
+}
+
+/* ---- Lists ---- */
+.prose ul,
+.prose ol {
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-6);
+}
+.prose li {
+  margin-bottom: var(--space-1);
+}
+.prose ul > li::marker {
+  color: var(--color-accent);
+}
+
+/* ---- Inline code ---- */
+.prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.84em;
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  padding: 1px 6px;
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+
+/* ---- Code blocks (Shiki) ---- */
+.prose .expressive-code,
+.prose figure.frame,
+.prose pre {
+  margin: var(--space-5) 0;
+}
+.prose pre {
+  position: relative;
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  overflow-x: auto;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
+  /* Shiki sets its own background; pin ours for a consistent identity. */
+  background: var(--color-code-bg) !important;
+}
+.prose pre code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  background: none;
+  border: none;
+  padding: 0;
+  white-space: pre;
+}
+
+/* Copy button injected by client script */
+.prose .code-copy {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 36px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-left: var(--border-width) solid var(--color-border-strong);
+  border-bottom: var(--border-width) solid var(--color-border-strong);
+  background: var(--color-code-bg);
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast),
+    background var(--dur-fast);
+}
+.prose .code-copy:hover {
+  color: var(--color-accent-ink);
+  background: var(--color-accent);
+}
+
+/* ---- Tables ---- */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  margin: var(--space-5) 0;
+  border: var(--border-width) solid var(--color-border-strong);
+  display: block;
+  overflow-x: auto;
+}
+.prose thead {
+  background: var(--color-surface);
+}
+.prose th,
+.prose td {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--border-width) solid var(--color-border);
+  border-right: var(--border-width) solid var(--color-border);
+  vertical-align: top;
+}
+.prose th:last-child,
+.prose td:last-child {
+  border-right: none;
+}
+.prose th {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+.prose tbody tr {
+  transition: background var(--dur-fast);
+}
+.prose tbody tr:hover {
+  background: var(--color-surface);
+}
+.prose tbody tr:last-child td {
+  border-bottom: none;
+}
+.prose td code {
+  white-space: nowrap;
+}
+.prose td:first-child code {
+  color: var(--color-accent);
+  background: none;
+  border: none;
+  padding: 0;
+  font-weight: var(--weight-semibold);
+}
+
+/* ---- Callouts (from remark-callouts) ---- */
+.prose .callout {
+  margin: var(--space-5) 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-left: var(--border-width-accent) solid var(--color-text-faint);
+}
+.prose .callout > :first-child {
+  margin-top: 0;
+}
+.prose .callout > :last-child {
+  margin-bottom: 0;
+}
+.prose .callout::before {
+  content: attr(data-label);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+.prose .callout-warn,
+.prose .callout-danger {
+  border-left-color: var(--color-accent);
+}
+.prose .callout-warn::before,
+.prose .callout-danger::before {
+  color: var(--color-accent);
+}
+.prose .callout-tip {
+  border-left-color: var(--color-text);
+}
+
+/* ---- Blockquote (non-callout) ---- */
+.prose blockquote {
+  margin: var(--space-5) 0;
+  padding-left: var(--space-5);
+  border-left: var(--border-width-accent) solid var(--color-border-strong);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* ---- Rules + media ---- */
+.prose hr {
+  border: none;
+  border-top: var(--border-width) solid var(--color-border-strong);
+  margin: var(--space-12) 0;
+}
+
+/* ---- ASCII diagrams: fenced ```text blocks read as diagrams ---- */
+.prose pre:has(code.language-text),
+.prose pre:has(code.language-ascii) {
+  color: var(--color-code-text);
+}

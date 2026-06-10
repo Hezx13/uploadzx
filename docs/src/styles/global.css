@@ -1,0 +1,188 @@
+/* =============================================================================
+   GLOBAL BASE + LAYOUT CHROME
+   Only references semantic tokens from tokens.css. Component-specific styling
+   lives in scoped .astro <style> blocks; this file holds resets, base elements,
+   the docs grid, and shared primitives (buttons, scrollbars).
+   ============================================================================ */
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--layout-bar-h) + var(--space-6));
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'ss01', 'cv05';
+}
+
+::selection {
+  background: var(--color-selection-bg);
+  color: var(--color-selection-text);
+}
+
+a {
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+/* ---------- Animated underline utility (links in prose + footer) ---------- */
+.link-underline {
+  background-image: linear-gradient(var(--color-accent), var(--color-accent));
+  background-size: 0% 1.5px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition:
+    background-size var(--dur) var(--ease),
+    color var(--dur-fast);
+}
+.link-underline:hover {
+  color: var(--color-accent);
+  background-size: 100% 1.5px;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 13px 24px;
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.btn:hover {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+.btn--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+.btn--primary:hover {
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* ---------- Docs layout grid ---------- */
+.docs-shell {
+  display: grid;
+  grid-template-columns: var(--layout-sidebar-w) minmax(0, 1fr);
+  max-width: var(--layout-page-max);
+  margin: 0 auto;
+}
+.docs-main {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--layout-toc-w);
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-12) var(--space-20);
+}
+.docs-article {
+  min-width: 0;
+  max-width: var(--layout-content-max);
+}
+
+/* ---------- Scroll-reveal (opt-in via .anim on <html>) ---------- */
+.anim [data-reveal] {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity var(--dur-slow) var(--ease),
+    transform var(--dur-slow) var(--ease);
+}
+.anim [data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- Scrollbars ---------- */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border: 3px solid var(--color-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+}
+
+@media (max-width: 1100px) {
+  .docs-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .docs-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .docs-main {
+    padding: var(--space-8) var(--space-5) var(--space-16);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+  .anim [data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+}

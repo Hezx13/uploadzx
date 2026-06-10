@@ -1,0 +1,25 @@
+---
+/**
+ * Callout for use inside MDX content or .astro pages. Renders the same markup
+ * (`aside.callout`) that the `remarkCallouts` plugin produces for plain
+ * Markdown, so styling stays in one place (`prose.css`).
+ */
+type Variant = 'note' | 'tip' | 'warn' | 'danger';
+
+interface Props {
+  type?: Variant;
+  label?: string;
+}
+
+const { type = 'note', label } = Astro.props;
+const defaults: Record<Variant, string> = {
+  note: 'Note',
+  tip: 'Tip',
+  warn: 'Warning',
+  danger: 'Danger',
+};
+---
+
+<aside class={`callout callout-${type}`} data-label={label ?? defaults[type]}>
+  <slot />
+</aside>

@@ -1,5 +1,9 @@
 // React hooks and components for uploadzx
-export { useUploadzx, type UseUploadzxResult } from './hooks/useUploadzx';
+export {
+  useUploadzx,
+  type UseUploadzxResult,
+  type UseUploadzxOptions,
+} from './hooks/useUploadzx';
 export { useUploadState, useUploadSelector } from './hooks/useUploadState';
 export { useUploadProgress, useUploadStatus } from './hooks/useUploadProgress';
 export { useStoreSelector } from './hooks/useStoreSelector';

@@ -1,14 +1,20 @@
 import { FileUp } from 'lucide-react'
-import type { UploadState } from 'uploadzx/react'
+import { memo } from 'react'
 import { UploadItemRow } from './UploadItemRow'
 import styles from './Dashboard.module.css'
 
 interface ActivityPanelProps {
-  uploads: Array<[string, UploadState]>
+  /** Only the ids — never the state objects. Each row subscribes to its own id. */
+  ids: string[]
   compactRows: boolean
 }
 
-export function ActivityPanel({ uploads, compactRows }: ActivityPanelProps) {
+/**
+ * Renders the list from ids alone. Because it receives ids (not state), it
+ * re-renders only when the set of files changes — a progress tick on any file
+ * never reaches this component; it's handled inside that file's row.
+ */
+export const ActivityPanel = memo(({ ids, compactRows }: ActivityPanelProps) => {
   return (
     <section className={styles.activityPanel} aria-labelledby="activity-panel-title">
       <div className={styles.panelHeader}>
@@ -16,14 +22,16 @@ export function ActivityPanel({ uploads, compactRows }: ActivityPanelProps) {
           <h2 id="activity-panel-title" className={styles.panelTitle}>
             Activity
           </h2>
-          <p className={styles.panelDescription}>{uploads.length} file{uploads.length === 1 ? '' : 's'} tracked in this session.</p>
+          <p className={styles.panelDescription}>
+            {ids.length} file{ids.length === 1 ? '' : 's'} tracked in this session.
+          </p>
         </div>
       </div>
 
-      {uploads.length > 0 ? (
+      {ids.length > 0 ? (
         <div className={styles.uploadList}>
-          {uploads.map(([fileId, state]) => (
-            <UploadItemRow key={fileId} fileId={fileId} state={state} compact={compactRows} />
+          {ids.map(fileId => (
+            <UploadItemRow key={fileId} fileId={fileId} compact={compactRows} />
           ))}
         </div>
       ) : (
@@ -34,4 +42,6 @@ export function ActivityPanel({ uploads, compactRows }: ActivityPanelProps) {
       )}
     </section>
   )
-}
+})
+
+ActivityPanel.displayName = 'ActivityPanel'

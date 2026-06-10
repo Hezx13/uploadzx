@@ -1,54 +1,60 @@
 import { Tooltip } from '@base-ui/react/tooltip'
 import { useMemo, useState } from 'react'
-import { useQueueStats, useUnfinishedUploads, useUploadStates, useUploadzxState } from 'uploadzx/react'
+import { useQueueStats, useUnfinishedUploads, useUploadzxState } from 'uploadzx/react'
+import { useUploadCounts, useUploadIds } from '../../hooks/useUploadSelectors'
 import { DashboardHeader } from './DashboardHeader'
 import { MetricsStrip } from './MetricsStrip'
 import { UploadWorkspace } from './UploadWorkspace'
 import type { DashboardView, UploadMetrics } from './types'
 import styles from './Dashboard.module.css'
 
-function buildMetrics(
-  uploadStates: ReturnType<typeof useUploadStates>['uploadStates'],
-  queueStats: ReturnType<typeof useQueueStats>['queueStats'],
-  unfinishedCount: number,
-): UploadMetrics {
-  const uploads = Object.values(uploadStates)
-  const completed = uploads.filter((upload) => upload.status === 'completed').length
-  const failed = uploads.filter((upload) => upload.status === 'error').length
-  const progressTotal = uploads.reduce((total, upload) => {
-    if (upload.status === 'completed') return total + 100
-    return total + (upload.progress?.percentage ?? 0)
-  }, 0)
-
-  return {
-    active: queueStats.activeCount,
-    queued: queueStats.queueLength,
-    completed,
-    failed,
-    unfinished: unfinishedCount,
-    total: uploads.length,
-    averageProgress: uploads.length > 0 ? progressTotal / uploads.length : 0,
-  }
-}
-
+/**
+ * The dashboard shell subscribes only to slices that change *infrequently*:
+ *  - the ordered id list (changes on add/remove/clear),
+ *  - aggregate status counts (changes on a status transition),
+ *  - queue stats and the unfinished list.
+ *
+ * None of these update on a raw progress tick, so the shell — and the list
+ * layout — stays put while individual rows update themselves. The continuously
+ * ticking value (average progress) is read lower down, inside the progress bar.
+ */
 export function UploadDashboard() {
   const [activeView, setActiveView] = useState<DashboardView>('upload')
   const [compactRows, setCompactRows] = useState(true)
+
   const { isInitialized } = useUploadzxState()
-  const { uploadStates } = useUploadStates()
+  const ids = useUploadIds()
+  const counts = useUploadCounts()
   const { queueStats } = useQueueStats()
   const { unfinishedUploads } = useUnfinishedUploads()
 
-  const uploads = useMemo(() => Object.entries(uploadStates).reverse(), [uploadStates])
-  const metrics = useMemo(
-    () => buildMetrics(uploadStates, queueStats, unfinishedUploads.length),
-    [queueStats, unfinishedUploads.length, uploadStates],
+  const metrics = useMemo<UploadMetrics>(
+    () => ({
+      active: queueStats.activeCount,
+      queued: queueStats.queueLength,
+      completed: counts.completed,
+      failed: counts.failed,
+      unfinished: unfinishedUploads.length,
+      total: counts.total,
+    }),
+    [
+      queueStats.activeCount,
+      queueStats.queueLength,
+      counts.completed,
+      counts.failed,
+      counts.total,
+      unfinishedUploads.length,
+    ]
   )
 
   return (
     <Tooltip.Provider delay={250}>
       <div className={styles.appShell}>
-        <DashboardHeader metrics={metrics} compactRows={compactRows} onCompactRowsChange={setCompactRows} />
+        <DashboardHeader
+          metrics={metrics}
+          compactRows={compactRows}
+          onCompactRowsChange={setCompactRows}
+        />
         <MetricsStrip metrics={metrics} />
 
         {isInitialized ? (
@@ -56,7 +62,7 @@ export function UploadDashboard() {
             activeView={activeView}
             compactRows={compactRows}
             metrics={metrics}
-            uploads={uploads}
+            ids={ids}
             onViewChange={setActiveView}
           />
         ) : (

@@ -102,8 +102,11 @@ export function useUploadzx(options: UseUploadzxOptions): UseUploadzxResult {
         optionsRef.current.onStateChange?.(state);
       }),
       core.on('complete', (fileId, url) => {
-        // Release completed state (and its File) instead of hoarding it.
-        store.remove(fileId);
+        // Keep the completed state in the store so the UI can show history
+        // (a "done" row, a completed count). The core has already evicted its
+        // own execution state; the consumer reclaims this via
+        // `clearCompletedUploads()`. The preceding `stateChange` already wrote
+        // the completed state, so there's nothing to set here.
         syncStats();
         optionsRef.current.onComplete?.(fileId, url);
       }),
@@ -178,7 +181,16 @@ export function useUploadzx(options: UseUploadzxOptions): UseUploadzxResult {
 
   const clearCompletedUploads = useCallback(() => {
     coreRef.current?.clearCompletedUploads();
-  }, []);
+    // Mirror the core's eviction in the UI store so cleared rows actually leave
+    // the screen and their retained Files are released.
+    const record = store.getRecordSnapshot();
+    for (const id of Object.keys(record)) {
+      const status = record[id].status;
+      if (status === 'completed' || status === 'cancelled') {
+        store.remove(id);
+      }
+    }
+  }, [store]);
 
   const restoreUnfinishedUpload = useCallback(
     async (fileHandleOrId: StoredFileHandle | string) => {

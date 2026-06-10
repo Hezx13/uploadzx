@@ -1,0 +1,75 @@
+---
+import '../styles/global.css';
+import '../styles/prose.css';
+import Header from '../components/layout/Header.astro';
+import { site } from '../config/site';
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** Show the mobile sidebar toggle in the header (docs pages only). */
+  showMenu?: boolean;
+}
+
+const { title, description = site.description, showMenu = false } = Astro.props;
+const pageTitle = title ? `${title} — ${site.name}` : `${site.name} — ${site.tagline}`;
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Set theme before paint to avoid a flash of the wrong theme. -->
+    <script is:inline>
+      (() => {
+        try {
+          const saved = localStorage.getItem('uploadzx-theme');
+          if (saved === 'light' || saved === 'dark') {
+            document.documentElement.setAttribute('data-theme', saved);
+          }
+        } catch (_) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <Header showMenu={showMenu} />
+    <slot />
+
+    <!-- Theme toggle handler (centralized; the button lives in the header). -->
+    <script>
+      const root = document.documentElement;
+      const sync = () => {
+        const isLight = root.getAttribute('data-theme') === 'light';
+        document.querySelectorAll('[data-theme-toggle]').forEach((el) => {
+          el.textContent = isLight ? '○' : '●';
+          el.setAttribute('aria-label', isLight ? 'Switch to dark theme' : 'Switch to light theme');
+        });
+      };
+      sync();
+      document.addEventListener('click', (e) => {
+        const toggle = (e.target as HTMLElement).closest('[data-theme-toggle]');
+        if (!toggle) return;
+        const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        root.setAttribute('data-theme', next);
+        try {
+          localStorage.setItem('uploadzx-theme', next);
+        } catch (_) {}
+        sync();
+      });
+    </script>
+  </body>
+</html>

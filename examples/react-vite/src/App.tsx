@@ -1,25 +1,32 @@
-import { UploadProgress, UploadzxProvider } from 'uploadzx/react'
+import { UploadzxProvider, type UseUploadzxOptions } from 'uploadzx/react'
+import { TusDriver } from 'uploadzx'
 import { UploadDashboard } from './components/dashboard/UploadDashboard'
-import { TusDriver } from 'uploadzx';
 
-const uploadOptions = {
+/**
+ * Options live at module scope so their identity is stable across renders. The
+ * driver is instantiated once here too — never inline in JSX, which would build
+ * a new driver (and a new uploader engine) on every render.
+ *
+ * Avoid a per-progress `onProgress` callback that logs or does work on the main
+ * thread: it fires for every active file on every tick. Subscribe to progress in
+ * the leaf that renders it instead (see `useUploadProgress(fileId)`).
+ */
+const uploadOptions: UseUploadzxOptions = {
   driver: new TusDriver({
     endpoint: 'https://tusd.tusdemo.net/files/',
+    chunkSize: 1024 * 1024,
   }),
-  chunkSize: 1024 * 1024,
   autoStart: true,
+  maxConcurrent: 3,
+  trackSpeed: true,
   filePickerOptions: {
     useFileSystemAccess: true,
   },
-  maxConcurrent: 1,
-  onProgress: (progress: UploadProgress) => {
-    console.log('Upload progress:', progress)
+  onComplete: (fileId, url) => {
+    console.info('[uploadzx] completed', fileId, url)
   },
-  onComplete: (fileId: string, url: string) => {
-    console.log('Upload completed:', fileId, url)
-  },
-  onError: (fileId: string) => {
-    console.error('Upload error:', fileId)
+  onError: (fileId, error) => {
+    console.error('[uploadzx] error', fileId, error)
   },
 }
 

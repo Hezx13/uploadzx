@@ -1,0 +1,140 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import type { MarkdownHeading } from 'astro';
+import BaseLayout from './BaseLayout.astro';
+import Sidebar from '../components/layout/Sidebar.astro';
+import Toc from '../components/layout/Toc.astro';
+import Pagination from '../components/layout/Pagination.astro';
+
+interface Props {
+  entry: CollectionEntry<'docs'>;
+  headings: MarkdownHeading[];
+}
+
+const { entry, headings } = Astro.props;
+const slug = entry.id;
+const { title, description } = entry.data;
+---
+
+<BaseLayout title={title} description={description} showMenu={true}>
+  <div class="docs-shell">
+    <Sidebar currentSlug={slug} />
+    <div class="docs-main">
+      <article class="docs-article prose">
+        <header class="doc-head">
+          <p class="doc-head__eyebrow">{title}</p>
+          <h1 class="doc-head__title">{title}</h1>
+          {description && <p class="doc-head__lead">{description}</p>}
+        </header>
+        <slot />
+        <Pagination slug={slug} />
+      </article>
+      <Toc headings={headings} />
+    </div>
+  </div>
+
+  <div class="sidebar-backdrop" data-sidebar-backdrop></div>
+</BaseLayout>
+
+<style>
+  .doc-head {
+    margin-bottom: var(--space-8);
+    padding-bottom: var(--space-5);
+    border-bottom: var(--border-width) solid var(--color-border-strong);
+  }
+  .doc-head__eyebrow {
+    margin: 0 0 var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--color-accent);
+  }
+  .doc-head__title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--fs-2xl);
+    line-height: var(--lh-tight);
+    letter-spacing: var(--tracking-tight);
+    color: var(--color-text);
+  }
+  .doc-head__lead {
+    margin: var(--space-3) 0 0;
+    font-size: var(--fs-md);
+    color: var(--color-text-muted);
+  }
+  /* The first prose heading sits right under the page header. */
+  .docs-article > :global(.callout:first-of-type),
+  .docs-article > :global(h2:first-of-type) {
+    margin-top: var(--space-6);
+  }
+
+  .sidebar-backdrop {
+    display: none;
+  }
+  @media (max-width: 900px) {
+    .sidebar-backdrop.is-open {
+      display: block;
+      position: fixed;
+      inset: var(--layout-bar-h) 0 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: var(--z-backdrop);
+    }
+  }
+</style>
+
+<script>
+  // ---- Copy buttons on code blocks -------------------------------------------
+  document.querySelectorAll('.prose pre').forEach((pre) => {
+    if (pre.querySelector('.code-copy')) return;
+    const btn = document.createElement('button');
+    btn.className = 'code-copy';
+    btn.type = 'button';
+    btn.textContent = '⧉';
+    btn.setAttribute('aria-label', 'Copy code');
+    btn.addEventListener('click', () => {
+      const code = pre.querySelector('code')?.textContent ?? '';
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = '✓';
+        setTimeout(() => (btn.textContent = '⧉'), 1200);
+      });
+    });
+    pre.appendChild(btn);
+  });
+
+  // ---- Mobile sidebar --------------------------------------------------------
+  const sidebar = document.querySelector('[data-sidebar]');
+  const backdrop = document.querySelector('[data-sidebar-backdrop]');
+  const setNav = (open: boolean) => {
+    sidebar?.classList.toggle('is-open', open);
+    backdrop?.classList.toggle('is-open', open);
+  };
+  document.querySelector('[data-sidebar-toggle]')?.addEventListener('click', () =>
+    setNav(!sidebar?.classList.contains('is-open'))
+  );
+  backdrop?.addEventListener('click', () => setNav(false));
+  sidebar?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('a')) setNav(false);
+  });
+
+  // ---- Table-of-contents scrollspy ------------------------------------------
+  const tocLinks = new Map<string, Element>();
+  document.querySelectorAll('[data-toc-link]').forEach((l) =>
+    tocLinks.set(l.getAttribute('data-toc-link')!, l)
+  );
+  if (tocLinks.size) {
+    const targets = document.querySelectorAll('.prose :is(h2, h3)[id]');
+    const spy = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            tocLinks.forEach((l) => l.classList.remove('is-active'));
+            tocLinks.get((e.target as HTMLElement).id)?.classList.add('is-active');
+          }
+        });
+      },
+      { rootMargin: '-80px 0px -75% 0px', threshold: 0 }
+    );
+    targets.forEach((t) => spy.observe(t));
+  }
+</script>

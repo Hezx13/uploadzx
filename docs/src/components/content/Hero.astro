@@ -1,0 +1,101 @@
+---
+import { site } from '../../config/site';
+import { firstDocSlug } from '../../config/navigation';
+import { docHref } from '../../lib/navigation';
+
+const pills = ['Browser-only', 'TypeScript', 'Resumable / tus', 'React bindings', 'Zero UI'];
+---
+
+<section class="hero" data-reveal>
+  <p class="hero__kicker">{site.tagline} · v{site.version}</p>
+  <h1 class="hero__title">{site.name}<span class="hero__dot">.</span></h1>
+
+  <ul class="hero__pills">
+    {pills.map((p, i) => <li class:list={['hero__pill', { 'hero__pill--accent': i === 0 }]}>{p}</li>)}
+  </ul>
+
+  <p class="hero__lead">{site.description}</p>
+
+  <div class="hero__cta">
+    <a class="btn btn--primary" href={docHref(firstDocSlug)}>Get started →</a>
+    <a class="btn" href={site.links.github} target="_blank" rel="noopener">View source</a>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding: var(--space-8) 0 var(--space-12);
+    border-bottom: var(--border-width) solid var(--color-border-strong);
+    margin-bottom: var(--space-12);
+  }
+  .hero__kicker {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-5);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--color-text-faint);
+  }
+  .hero__kicker::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
+  .hero__title {
+    margin: 0 0 var(--space-6);
+    font-family: var(--font-display);
+    font-size: var(--fs-hero);
+    line-height: 0.92;
+    letter-spacing: -0.045em;
+    font-weight: var(--weight-bold);
+    text-transform: lowercase;
+    color: var(--color-text);
+  }
+  .hero__dot {
+    color: var(--color-accent);
+  }
+  .hero__pills {
+    display: flex;
+    flex-wrap: wrap;
+    list-style: none;
+    margin: 0 0 var(--space-6);
+    padding: 0;
+    width: fit-content;
+    max-width: 100%;
+    border: var(--border-width) solid var(--color-border);
+  }
+  .hero__pill {
+    padding: 7px var(--space-4);
+    border-right: var(--border-width) solid var(--color-border);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+  .hero__pill:last-child {
+    border-right: none;
+  }
+  .hero__pill--accent {
+    color: var(--color-accent);
+  }
+  .hero__lead {
+    max-width: 680px;
+    margin: 0 0 var(--space-8);
+    font-size: var(--fs-md);
+    line-height: var(--lh-snug);
+    color: var(--color-text-muted);
+  }
+  .hero__cta {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  /* Joined button group (shared edges) */
+  .hero__cta .btn + .btn {
+    border-left: none;
+  }
+</style>

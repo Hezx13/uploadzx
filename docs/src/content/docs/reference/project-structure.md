@@ -1,0 +1,38 @@
+---
+title: Project structure
+description: A map of the library source tree.
+---
+
+```text
+src/
+├─ index.ts                 # Uploadzx facade + public exports
+├─ types/                   # shared types (UploadFile, UploadState, …)
+├─ core/
+│  ├─ UploadQueue.ts        # concurrency, validation, persistence, events
+│  ├─ FilePicker.ts         # input + File System Access picker
+│  └─ FileHandleStore.ts    # IndexedDB PersistenceAdapter (+ Safari fallback)
+├─ transport/
+│  ├─ types.ts              # UploadDriver / UploadSession contracts
+│  ├─ UploadController.ts   # per-file engine
+│  ├─ UploadStateMachine.ts # status transitions
+│  ├─ ProgressTracker.ts    # bytes / % / speed
+│  ├─ CheckpointStore.ts    # resume data
+│  ├─ TusDriver.ts          # tus transport (resumable)
+│  └─ HttpPutDriver.ts      # PUT/POST transport (non-resumable)
+├─ react/
+│  ├─ index.ts              # uploadzx/react exports
+│  ├─ UploadStore.ts        # external store (useSyncExternalStore)
+│  ├─ hooks/                # useUploadzx, useUploadState, useUploadItem, …
+│  └─ components/           # UploadzxProvider, UploadDropzone
+└─ utils/                   # logger, emitter, file helpers, validation
+
+examples/
+├─ react-vite/              # React demo
+└─ vanilla-vite/            # Vanilla TS demo
+
+docs/                       # this documentation site (Astro)
+```
+
+uploadzx is MIT licensed. Source and issues live on
+[GitHub](https://github.com/Hezx13/uploadzx); the package is on
+[npm](https://www.npmjs.com/package/uploadzx).

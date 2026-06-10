@@ -1,0 +1,24 @@
+---
+import { getCollection, render } from 'astro:content';
+import type { GetStaticPaths } from 'astro';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+/**
+ * One route per content entry. The entry id (path under `src/content/docs`
+ * without extension) becomes the `[...slug]` param and the URL.
+ */
+export const getStaticPaths = (async () => {
+  const entries = await getCollection('docs');
+  return entries.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}) satisfies GetStaticPaths;
+
+const { entry } = Astro.props;
+const { Content, headings } = await render(entry);
+---
+
+<DocsLayout entry={entry} headings={headings}>
+  <Content />
+</DocsLayout>

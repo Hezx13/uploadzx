@@ -1,0 +1,179 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Hero from '../components/content/Hero.astro';
+import FeatureGrid, { type Feature } from '../components/content/FeatureGrid.astro';
+import { navigation } from '../config/navigation';
+import { docHref } from '../lib/navigation';
+import { site } from '../config/site';
+
+const features: Feature[] = [
+  { title: 'Resumable uploads', body: 'tus protocol with automatic fingerprinting and checkpoint persistence.' },
+  { title: 'Pause · resume · cancel', body: 'Per-file and whole-queue control, backed by a concurrency cap.' },
+  { title: 'Survives reloads', body: 'IndexedDB persistence with TTL reaping and storage-quota guards.' },
+  { title: 'File System Access API', body: 'Reuses file handles across sessions; Safari fallback included.' },
+  { title: 'Granular React hooks', body: 'A row re-renders only when its own file changes.' },
+  { title: 'Pluggable transports', body: 'Swap tus for S3, a presigned PUT, or your own driver.' },
+  { title: 'Dynamic auth', body: 'Headers/metadata can be async functions, re-resolved per request.' },
+  { title: 'SSR-safe & quiet', body: 'Construct on the server; no console noise unless you ask for it.' },
+];
+---
+
+<BaseLayout>
+  <main class="landing">
+    <Hero />
+
+    <section class="block" data-reveal>
+      <p class="block__label">What you get</p>
+      <FeatureGrid features={features} />
+    </section>
+
+    <section class="block" data-reveal>
+      <p class="block__label">Install</p>
+      <pre class="install"><code>npm install uploadzx</code></pre>
+      <p class="block__note">
+        Then point an uploader at a transport driver and start uploading. See the{' '}
+        <a class="link-underline" href={docHref('getting-started/quick-start')}>quick start</a>.
+      </p>
+    </section>
+
+    <section class="block" data-reveal>
+      <p class="block__label">Explore the docs</p>
+      <div class="map">
+        {
+          navigation.map((group) => (
+            <div class="map__group">
+              <h2 class="map__title">{group.label}</h2>
+              <ul class="map__list">
+                {group.items.map((item) => (
+                  <li>
+                    <a class="link-underline" href={docHref(item.slug)}>
+                      {item.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+
+    <footer class="landing__footer">
+      <span>uploadzx — MIT licensed.</span>
+      <span>
+        <a class="link-underline" href={site.links.github} target="_blank" rel="noopener">GitHub</a>
+        {' · '}
+        <a class="link-underline" href={site.links.npm} target="_blank" rel="noopener">npm</a>
+      </span>
+    </footer>
+  </main>
+
+  <!-- Reveal-on-scroll for landing blocks -->
+  <script>
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduced) {
+      document.documentElement.classList.add('anim');
+      const io = new IntersectionObserver(
+        (entries, obs) => {
+          entries.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add('is-visible');
+              obs.unobserve(e.target);
+            }
+          });
+        },
+        { rootMargin: '0px 0px -8% 0px', threshold: 0.05 }
+      );
+      document.querySelectorAll('[data-reveal]').forEach((el) => io.observe(el));
+      requestAnimationFrame(() =>
+        document.querySelectorAll('[data-reveal]').forEach((el) => {
+          if (el.getBoundingClientRect().top < window.innerHeight) el.classList.add('is-visible');
+        })
+      );
+    }
+  </script>
+</BaseLayout>
+
+<style>
+  .landing {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-20);
+  }
+  .block {
+    margin-top: var(--space-16);
+  }
+  .block__label {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--color-text-faint);
+  }
+  .block__note {
+    color: var(--color-text-muted);
+    font-size: var(--fs-base);
+  }
+  .install {
+    margin: var(--space-4) 0;
+    padding: var(--space-5);
+    background: var(--color-code-bg);
+    border: var(--border-width) solid var(--color-border-strong);
+    color: var(--color-code-text);
+    font-family: var(--font-mono);
+    font-size: var(--fs-base);
+    overflow-x: auto;
+  }
+  .install code {
+    font-family: var(--font-mono);
+  }
+
+  .map {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0;
+    margin-top: var(--space-6);
+    border: var(--border-width) solid var(--color-border);
+    border-bottom: none;
+  }
+  .map__group {
+    padding: var(--space-5);
+    border-bottom: var(--border-width) solid var(--color-border);
+    border-right: var(--border-width) solid var(--color-border);
+  }
+  .map__title {
+    margin: 0 0 var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--color-accent);
+  }
+  .map__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+  }
+  .map__list a {
+    color: var(--color-text-muted);
+    font-size: var(--fs-sm);
+  }
+
+  .landing__footer {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-top: var(--space-20);
+    padding-top: var(--space-8);
+    border-top: var(--border-width) solid var(--color-border-strong);
+    color: var(--color-text-faint);
+    font-size: var(--fs-sm);
+  }
+  .landing__footer a {
+    color: var(--color-text-muted);
+  }
+</style>
