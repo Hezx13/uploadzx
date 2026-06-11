@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Uploadzx, UploadzxOptions } from '../../index';
-import type { StoredFileHandle, UploadFile, UploadProgress, UploadState } from '../../types';
+import type {
+  IntegrityDigest,
+  StoredFileHandle,
+  UploadFile,
+  UploadProgress,
+  UploadState,
+} from '../../types';
 import { UploadStore } from '../UploadStore';
 
 export interface UseUploadzxOptions extends UploadzxOptions {
@@ -10,6 +16,8 @@ export interface UseUploadzxOptions extends UploadzxOptions {
   onComplete?: (fileId: string, url: string) => void;
   onError?: (fileId: string, error: Error) => void;
   onCancel?: (fileId: string) => void;
+  /** Fired once a file's integrity digest has been computed (pre-upload). */
+  onHash?: (fileId: string, digest: IntegrityDigest) => void;
 }
 
 /**
@@ -118,6 +126,9 @@ export function useUploadzx(options: UseUploadzxOptions): UseUploadzxResult {
         store.remove(fileId);
         syncStats();
         optionsRef.current.onCancel?.(fileId);
+      }),
+      core.on('hash', (fileId, digest) => {
+        optionsRef.current.onHash?.(fileId, digest);
       }),
     ];
 

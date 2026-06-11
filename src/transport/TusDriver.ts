@@ -5,7 +5,7 @@ import {
   UploadSession,
   ResumeData,
 } from './types';
-import { Upload, defaultOptions } from 'tus-js-client';
+import { Upload } from 'tus-js-client';
 import type { UploadOptions as TusUploadOptions } from 'tus-js-client';
 import { DynamicValue, resolveDynamicValue } from '../utils';
 
@@ -84,22 +84,44 @@ class TusSession implements UploadSession {
       rejectDone = reject;
     });
 
+    // When integrity hashing is enabled, advertise the digest as tus metadata
+    // (e.g. `checksum: "blake3:<hex>"`) so the server can verify what it stored.
+    const integrityMetadata = this.ctx.integrity
+      ? {
+          [this.ctx.integrity.metadataKey]:
+            `${this.ctx.integrity.digest.algorithm}:${this.ctx.integrity.digest.hex}`,
+        }
+      : undefined;
+
     const uploadOptions: TusUploadOptions = {
       endpoint: this.options.endpoint,
-      uploadUrl: this.previousUploadUrl, // Use previous URL if resuming
+      // When set (resume), tus issues a HEAD to learn the current offset and
+      // continues with PATCH instead of creating a fresh upload.
+      uploadUrl: this.previousUploadUrl,
       chunkSize: this.options.chunkSize || 1024 * 1024, // 1MB default
       retryDelays: this.options.retryDelays || [0, 3000, 5000, 10000, 20000],
       metadata: {
         filename: this.ctx.file.name,
         filetype: this.ctx.file.type,
         ...resolvedMetadata,
+        ...integrityMetadata,
       },
       headers: resolvedHeaders,
-      // Use default fingerprinting for resumable uploads (file size + modification time + name)
-      fingerprint: defaultOptions.fingerprint,
-      // Ensure fingerprints are stored for resuming
-      storeFingerprintForResuming: true,
-      removeFingerprintOnSuccess: true,
+      // uploadzx owns resume bookkeeping: the upload URL is persisted in
+      // IndexedDB and replayed via `uploadUrl` above. tus's own localStorage
+      // fingerprint store is therefore redundant, and leaving it on leaks a
+      // `tus::…` entry into localStorage on every upload/retry. Turn it off.
+      storeFingerprintForResuming: false,
+
+      // Surface the upload URL the instant it's known — on creation *or* on
+      // resume — so the queue can persist it mid-flight. This is what makes a
+      // page refresh during an active upload resume instead of restarting at 0.
+      onUploadUrlAvailable: () => {
+        const url = this.upload?.url;
+        if (url) {
+          this.handlers.onCheckpoint({ uploadUrl: url });
+        }
+      },
 
       // Failure is reported solely by rejecting `start()`; there is no separate
       // error callback, which avoids double-dispatching the same error.
@@ -122,36 +144,6 @@ class TusSession implements UploadSession {
     this.ctx.signal.addEventListener('abort', () => this.upload?.abort(), { once: true });
 
     this.upload = new Upload(this.ctx.file, uploadOptions);
-
-    // If resuming (we have a previous upload URL), try to find and resume the previous upload
-    if (this.previousUploadUrl) {
-      try {
-        const previousUploads = await this.upload.findPreviousUploads();
-        this.ctx.logger.debug('Found previous uploads:', previousUploads.length);
-
-        const matchingUpload = previousUploads.find(
-          upload => upload.uploadUrl === this.previousUploadUrl
-        );
-
-        if (matchingUpload) {
-          this.ctx.logger.debug('Resuming from previous upload:', {
-            url: matchingUpload.uploadUrl,
-            size: matchingUpload.size,
-          });
-          this.upload.resumeFromPreviousUpload(matchingUpload);
-          // Report checkpoint immediately upon resume
-          if (matchingUpload.uploadUrl) {
-            this.handlers.onCheckpoint({ uploadUrl: matchingUpload.uploadUrl });
-          }
-        } else {
-          this.ctx.logger.warn('Previous upload not found, starting new upload');
-        }
-      } catch (error) {
-        this.ctx.logger.warn('Could not find previous upload, starting new:', error);
-        // Continue with new upload if resume fails
-      }
-    }
-
     this.upload.start();
     return done;
   }

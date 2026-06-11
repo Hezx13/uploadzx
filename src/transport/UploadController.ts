@@ -5,16 +5,20 @@ import {
   UploadState,
   UploadProgress,
   Uploader,
+  IntegrityDigest,
 } from '../types';
 import { UploadDriver, UploadSession, ResumeData, UploadResult } from './types';
 import { ProgressTracker } from './ProgressTracker';
 import { UploadStateMachine } from './UploadStateMachine';
 import { CheckpointStore } from './CheckpointStore';
 import { createLogger, Logger } from '../utils';
+import type { IntegrityCoordinator } from '../integrity/IntegrityCoordinator';
 
 export interface UploadControllerOptions {
   trackSpeed?: boolean;
   logger?: Logger;
+  /** Enables the pre-upload integrity-hashing stage when provided. */
+  integrity?: { coordinator: IntegrityCoordinator };
 }
 
 /** Minimum interval between progress event emissions, to avoid flooding listeners. */
@@ -41,6 +45,8 @@ export class UploadController implements Uploader {
   private abortController: AbortController;
   private session?: UploadSession;
   private lastProgressEmit = 0;
+  private readonly integrity?: { coordinator: IntegrityCoordinator };
+  private integrityDigest?: IntegrityDigest;
 
   constructor(
     uploadFile: UploadFile,
@@ -72,19 +78,33 @@ export class UploadController implements Uploader {
     );
 
     this.progressTracker = new ProgressTracker(controllerOptions?.trackSpeed ?? false);
+    this.integrity = controllerOptions?.integrity;
   }
 
   /**
    * Initialize the controller with prior resume data and bytes.
    * Called when resuming a paused/failed upload from storage.
+   *
+   * `digest` seeds a previously-computed (and, on resume, already-verified)
+   * content digest so the upload doesn't re-hash on start.
    */
-  setResumeState(resumeData: ResumeData | undefined, bytesUploaded: number): void {
+  setResumeState(
+    resumeData: ResumeData | undefined,
+    bytesUploaded: number,
+    digest?: IntegrityDigest
+  ): void {
     this.checkpoints.hydrate(resumeData, bytesUploaded);
+
+    if (digest) {
+      this.integrityDigest = digest;
+      this.integrity?.coordinator.seed(this.uploadFile.id, digest);
+    }
 
     const state = this.machine.getState();
     this.machine.hydrate({
       ...state,
       status: resumeData ? 'paused' : 'pending',
+      integrity: digest ?? state.integrity,
       progress: {
         ...state.progress,
         bytesUploaded,
@@ -106,6 +126,15 @@ export class UploadController implements Uploader {
     this.lastProgressEmit = 0;
 
     try {
+      if (this.integrity) {
+        const outcome = await this.runIntegrityStage();
+        // Aborted (pause/cancel during hashing) or skipped as a duplicate —
+        // either way there is no transfer to start.
+        if (outcome !== 'ok') {
+          return;
+        }
+      }
+
       this.session = this.driver.createSession(
         {
           fileId: this.uploadFile.id,
@@ -116,6 +145,7 @@ export class UploadController implements Uploader {
           resume: this.checkpoints.resume,
           signal: this.abortController.signal,
           logger: this.logger,
+          integrity: this.buildIntegrityContext(),
         },
         {
           onProgress: bytes => this.handleProgress(bytes),
@@ -180,6 +210,7 @@ export class UploadController implements Uploader {
     this.abortController.abort();
     this.checkpoints.clear();
     this.progressTracker.reset();
+    this.integrity?.coordinator.forget(this.uploadFile.id);
     this.events.onCancel?.(this.uploadFile.id);
   }
 
@@ -236,6 +267,68 @@ export class UploadController implements Uploader {
     }
     this.events.onError?.(this.uploadFile.id, error);
     this.progressTracker.reset();
+  }
+
+  getIntegrity(): IntegrityDigest | undefined {
+    return this.integrityDigest;
+  }
+
+  /**
+   * Pre-upload hashing pass. Computes (or reuses) the file's content digest,
+   * publishes it to state/events, and short-circuits the upload if the digest
+   * matches an already-completed one (dedup).
+   *
+   * Returns `'aborted'` when a pause/cancel interrupts hashing, `'deduplicated'`
+   * when the file was skipped as a duplicate, and `'ok'` to proceed with the
+   * transfer. Real hashing failures are thrown for the caller's error handler.
+   */
+  private async runIntegrityStage(): Promise<'ok' | 'aborted' | 'deduplicated'> {
+    if (!this.integrity) return 'ok';
+    const { coordinator } = this.integrity;
+    const opts = coordinator.resolvedOptions;
+
+    let digest = this.integrityDigest ?? coordinator.getCached(this.uploadFile.id);
+    if (!digest) {
+      try {
+        digest = await coordinator.getDigest(this.uploadFile.id, this.uploadFile.file, {
+          signal: this.abortController.signal,
+        });
+      } catch (error) {
+        // A pause/cancel aborts the hash; that's an intentional stop, not a failure.
+        if (this.abortController.signal.aborted) {
+          return 'aborted';
+        }
+        throw error;
+      }
+    }
+
+    // A pause/cancel may have arrived after the hash resolved.
+    if (this.abortController.signal.aborted) {
+      return 'aborted';
+    }
+
+    this.integrityDigest = digest;
+    this.machine.setIntegrity(digest);
+    this.events.onHash?.(this.uploadFile.id, digest);
+
+    if (opts.dedup) {
+      const duplicate = coordinator.findCompleted(digest.hex);
+      if (duplicate) {
+        this.logger.debug(`Skipping duplicate upload for ${this.uploadFile.name}`);
+        this.handleSuccess({ url: duplicate.url });
+        return 'deduplicated';
+      }
+    }
+
+    return 'ok';
+  }
+
+  /** Build the per-file integrity context handed to the driver, if enabled. */
+  private buildIntegrityContext(): { digest: IntegrityDigest; metadataKey: string } | undefined {
+    if (!this.integrity || !this.integrityDigest) return undefined;
+    const opts = this.integrity.coordinator.resolvedOptions;
+    if (!opts.sendToServer) return undefined;
+    return { digest: this.integrityDigest, metadataKey: opts.metadataKey };
   }
 
   private makeProgress(

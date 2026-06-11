@@ -16,6 +16,10 @@
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js",
       "require": "./dist/react/index.cjs"
+    },
+    "./integrity": {
+      "types": "./dist/integrity/index.d.ts",
+      "import": "./dist/integrity/index.js"
     }
   },
   "files": [
@@ -25,15 +29,20 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:wasm": "wasm-pack build crates/uploadzx-hash --target web --release --out-dir ../../src/integrity/wasm/pkg --out-name uploadzx_hash",
+    "build:integrity": "pnpm run build:wasm && tsup --config tsup.integrity.config.ts && node -e \"require('fs').copyFileSync('src/integrity/wasm/pkg/uploadzx_hash_bg.wasm','dist/integrity/worker/uploadzx_hash_bg.wasm')\"",
+    "build:all": "pnpm run build && pnpm run build:integrity",
     "build:watch": "tsup --watch",
     "dev": "tsup --watch",
     "serve": "python -m http.server 8080 || python3 -m http.server 8080 || npx serve . -p 8080",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:wasm": "cargo test --manifest-path crates/uploadzx-hash/Cargo.toml",
+    "test:wasm:smoke": "node scripts/wasm-smoke.mjs",
     "example:react": "cd examples/react-vite && pnpm dev",
     "example:vanilla": "cd examples/vanilla-vite && pnpm dev",
     "examples:install": "pnpm install && pnpm build",
-    "prepublishOnly": "pnpm run build",
+    "prepublishOnly": "pnpm run build:all",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },

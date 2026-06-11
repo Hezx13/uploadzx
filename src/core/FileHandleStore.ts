@@ -1,4 +1,4 @@
-import { PersistenceAdapter, StoredFileHandle, ResumeData } from '../types';
+import { PersistenceAdapter, StoredFileHandle, ResumeData, IntegrityDigest } from '../types';
 import {
   createLogger,
   createMockFileHandle,
@@ -17,6 +17,7 @@ interface SafariFileMeta {
   resumeData?: ResumeData;
   bytesUploaded?: number;
   createdAt?: number;
+  hash?: IntegrityDigest;
   /** Legacy inline payload from schema v2. Read-only fallback. */
   data?: ArrayBuffer;
 }
@@ -227,6 +228,7 @@ export class FileHandleStore implements PersistenceAdapter {
       resumeData,
       bytesUploaded: meta.bytesUploaded,
       createdAt: meta.createdAt,
+      hash: meta.hash,
     };
   }
 
@@ -263,7 +265,8 @@ export class FileHandleStore implements PersistenceAdapter {
   async updateFileHandleProgress(
     id: string,
     resumeData: ResumeData | undefined,
-    bytesUploaded: number
+    bytesUploaded: number,
+    hash?: IntegrityDigest
   ): Promise<void> {
     if (!isBrowser()) return;
     const storeName = this.isFileSystemAccessSupported ? this.storeName : this.safariMetaStore;
@@ -277,6 +280,7 @@ export class FileHandleStore implements PersistenceAdapter {
       if (!record) return;
       record.resumeData = resumeData;
       record.bytesUploaded = bytesUploaded;
+      if (hash) record.hash = hash;
       store.put(record);
     });
   }

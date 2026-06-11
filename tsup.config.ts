@@ -12,7 +12,9 @@ export default defineConfig([
     outDir: 'dist',
     target: 'es2020',
     minify: false,
-    external: [],
+    // The worker-backed wasm hasher is loaded lazily from this subpath; keep it
+    // out of the core bundle so consumers who don't enable integrity pay nothing.
+    external: ['uploadzx/integrity'],
     noExternal: ['tus-js-client'],
     treeshake: true,
     bundle: true,
@@ -33,7 +35,10 @@ export default defineConfig([
     outDir: 'dist/react',
     target: 'es2020',
     minify: false,
-    external: ['react'],
+    // Keep the worker-backed wasm hasher lazy here too — without this the
+    // `import('uploadzx/integrity')` in the core gets inlined into the React
+    // bundle, pulling the worker + wasm into every React consumer.
+    external: ['react', 'uploadzx/integrity'],
     treeshake: true,
     bundle: true,
     platform: 'browser',

@@ -10,12 +10,32 @@ to get productive quickly.
 
 ```bash
 pnpm install        # install deps
-pnpm build          # bundle with tsup (ESM + CJS + d.ts)
+pnpm build          # bundle the core with tsup (ESM + CJS + d.ts)
 pnpm dev            # rebuild on change (tsup --watch)
 pnpm test           # run Vitest (uses fake-indexeddb + happy-dom)
 pnpm test:watch     # watch mode
 pnpm format         # prettier --write ./src
 ```
+
+### Building the integrity (wasm) feature
+
+The optional integrity hasher is a Rust crate (`crates/uploadzx-hash`) compiled to
+WebAssembly. Only contributors touching that feature need the Rust toolchain.
+
+```bash
+# one-time: install Rust + the wasm target + wasm-pack
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
+
+pnpm test:wasm        # cargo tests (known-answer vectors) for the crate
+pnpm build:wasm       # wasm-pack → src/integrity/wasm/pkg (gitignored)
+pnpm build:integrity  # build:wasm + bundle the worker/entry to dist/integrity
+pnpm build:all        # core + integrity (used by prepublishOnly)
+pnpm test:wasm:smoke  # gated end-to-end smoke against the real wasm
+```
+
+The default `pnpm test` uses an injected JS hasher and needs no wasm. The published
+package ships the prebuilt wasm, so consumers never need Rust.
 
 ## Run the examples against your local build
 
@@ -34,6 +54,7 @@ pnpm example:vanilla    # Vanilla + Vite demo
 | Tests               | Vitest + `fake-indexeddb` + `happy-dom`           |
 | Formatting          | Prettier                                          |
 | Resumable transport | `tus-js-client`                                   |
+| Integrity hashing   | Rust + `wasm-pack` (`crates/uploadzx-hash`)       |
 
 ## Good first contributions
 

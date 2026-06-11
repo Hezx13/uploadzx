@@ -44,4 +44,7 @@ Thumbs.db
 coverage/
 
 # Documentation build
-docs/_build/ 
+docs/_build/
+
+# Generated wasm bindings (produced by `pnpm build:wasm`)
+src/integrity/wasm/pkg/ 

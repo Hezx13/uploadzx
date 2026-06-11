@@ -1,4 +1,5 @@
 import type { Logger } from '../utils';
+import type { IntegrityDigest } from '../types';
 
 /**
  * Opaque, driver-defined checkpoint for resuming.
@@ -28,6 +29,12 @@ export interface UploadDriverContext<R extends ResumeData = ResumeData> {
   signal: AbortSignal;
   /** Logger for debug output */
   logger: Logger;
+  /**
+   * Content digest to advertise to the server for end-to-end integrity, present
+   * only when integrity hashing is enabled and `sendToServer` is on. Drivers
+   * that understand it (e.g. tus) should attach it under `metadataKey`.
+   */
+  integrity?: { digest: IntegrityDigest; metadataKey: string };
 }
 
 /**

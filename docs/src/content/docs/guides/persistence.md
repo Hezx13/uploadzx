@@ -24,6 +24,10 @@ together: the driver's checkpoint and a persistence adapter.
 - **Change detection:** on resume, the file's `lastModified` _and_ `size` must
   match what was stored; otherwise the record is dropped (the file was
   edited/replaced).
+- **Content-addressed verification (opt-in):** with
+  [integrity hashing](/docs/guides/integrity) enabled, the restored file is
+  re-hashed and compared to the persisted digest, catching same-size/same-mtime
+  edits the cheap check misses.
 - **TTL reaping:** records older than `persistenceTtlMs` (default 7 days) are
   deleted on init, so abandoned uploads don't accumulate. Set `0` to disable.
 - **Quota guard:** the Safari blob path refuses to cache a file if it would exceed
@@ -43,7 +47,7 @@ interface PersistenceAdapter {
   getFileHandle(id: string): Promise<StoredFileHandle | null>;
   getAllFileHandles(): Promise<StoredFileHandle[]>;
   removeFileHandle(id: string): Promise<void>;
-  updateFileHandleProgress(id: string, resume: ResumeData | undefined, bytes: number): Promise<void>;
+  updateFileHandleProgress(id: string, resume: ResumeData | undefined, bytes: number, hash?: IntegrityDigest): Promise<void>;
   getFileFromHandleByID(id: string): Promise<File | null>;
   clear(): Promise<void>;
   reapStale?(maxAgeMs: number): Promise<void>; // optional

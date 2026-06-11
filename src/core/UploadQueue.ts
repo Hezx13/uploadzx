@@ -10,10 +10,12 @@ import {
   QueueOptions,
   UploadDriver,
   ResumeData,
+  IntegrityDigest,
 } from '../types';
 import { createLogger, isBrowser, Logger, TypedEmitter, validateFile } from '../utils';
 import { UploadController } from '../transport/UploadController';
 import { FileHandleStore } from './FileHandleStore';
+import { IntegrityCoordinator, resolveIntegrityOptions } from '../integrity/IntegrityCoordinator';
 
 export interface UploaderFactoryParams {
   file: UploadFile;
@@ -22,6 +24,8 @@ export interface UploaderFactoryParams {
   resumeData?: ResumeData;
   bytesUploaded?: number;
   trackSpeed?: boolean;
+  /** A previously-computed (verified) content digest to seed on resume. */
+  digest?: IntegrityDigest;
 }
 
 export type UploaderFactory = (params: UploaderFactoryParams) => Uploader;
@@ -49,6 +53,8 @@ export class UploadQueue {
   private isInitialized: boolean = false;
   private lastPersist: Map<string, number> = new Map();
   public fileHandleStore: PersistenceAdapter;
+  /** Present only when integrity hashing is enabled via options. */
+  private coordinator?: IntegrityCoordinator;
 
   /** Resolves when the queue has loaded any prior unfinished uploads; rejects on init failure. */
   public readonly ready: Promise<void>;
@@ -63,19 +69,24 @@ export class UploadQueue {
     this.registerEvents(events);
     this.logger = createLogger(options.debug, options.logger);
     this.fileHandleStore = options.store ?? new FileHandleStore(this.logger);
+
     this.uploaderFactory =
       options.uploaderFactory ??
-      (({ file, driver, events: evts, resumeData, bytesUploaded, trackSpeed }) => {
+      (({ file, driver, events: evts, resumeData, bytesUploaded, trackSpeed, digest }) => {
         // Pass only what the controller actually consumes, not the full queue config.
         const controller = new UploadController(
           file,
           { debug: this.options.debug, logger: this.options.logger },
           driver,
           evts,
-          { trackSpeed: trackSpeed ?? false, logger: this.logger }
+          {
+            trackSpeed: trackSpeed ?? false,
+            logger: this.logger,
+            integrity: this.coordinator ? { coordinator: this.coordinator } : undefined,
+          }
         );
-        if (resumeData !== undefined || bytesUploaded !== undefined) {
-          controller.setResumeState(resumeData, bytesUploaded || 0);
+        if (resumeData !== undefined || bytesUploaded !== undefined || digest !== undefined) {
+          controller.setResumeState(resumeData, bytesUploaded || 0, digest);
         }
         return controller;
       });
@@ -87,6 +98,8 @@ export class UploadQueue {
   }
 
   private async initialize(): Promise<void> {
+    await this.setupIntegrity();
+
     // No persistent storage outside the browser (SSR) — initialize as an empty,
     // ready queue rather than throwing on `indexedDB`.
     if (!isBrowser()) {
@@ -108,6 +121,25 @@ export class UploadQueue {
       this.options.onInit?.();
       throw error;
     }
+  }
+
+  /**
+   * Build the integrity coordinator when `integrity` is configured. The
+   * worker-backed wasm hasher is imported lazily from the `uploadzx/integrity`
+   * subpath so it never enters the core bundle; an injected `hasher` (e.g. in
+   * tests) skips the dynamic import entirely.
+   */
+  private async setupIntegrity(): Promise<void> {
+    const integrityOptions = this.options.integrity;
+    if (!integrityOptions) return;
+
+    const resolved = resolveIntegrityOptions(integrityOptions);
+    let hasher = integrityOptions.hasher;
+    if (!hasher) {
+      const integrity = await import('uploadzx/integrity');
+      hasher = new integrity.HashWorkerClient({ workerFactory: integrityOptions.workerFactory });
+    }
+    this.coordinator = new IntegrityCoordinator(hasher, resolved);
   }
 
   public getIsInitialized(): boolean {
@@ -136,6 +168,7 @@ export class UploadQueue {
     if (events.onComplete) this.emitter.on('complete', events.onComplete);
     if (events.onError) this.emitter.on('error', events.onError);
     if (events.onCancel) this.emitter.on('cancel', events.onCancel);
+    if (events.onHash) this.emitter.on('hash', events.onHash);
   }
 
   private buildEvents(): UploadEvents {
@@ -149,6 +182,7 @@ export class UploadQueue {
       onError: (fileId, error) => this.handleError(fileId, error),
       // Surfaced once when the uploader actually transitions to cancelled.
       onCancel: fileId => this.emitter.emit('cancel', fileId),
+      onHash: (fileId, digest) => this.emitter.emit('hash', fileId, digest),
     };
   }
 
@@ -309,6 +343,7 @@ export class UploadQueue {
    */
   destroy(): void {
     this.emitter.removeAll();
+    this.coordinator?.dispose();
   }
 
   /** Adds a file id to the pending queue if it isn't already queued. */
@@ -333,6 +368,7 @@ export class UploadQueue {
   private async updateStoredFileHandleProgress(uploader: Uploader): Promise<void> {
     const state = uploader.getState();
     const resumeData = uploader.getResumeData();
+    const digest = uploader.getIntegrity?.();
 
     if (resumeData && state.progress.bytesUploaded > 0) {
       const storedHandle = this.unfinishedUploads.get(state.fileId);
@@ -341,13 +377,15 @@ export class UploadQueue {
           ...storedHandle,
           resumeData,
           bytesUploaded: state.progress.bytesUploaded,
+          hash: digest ?? storedHandle.hash,
         };
         this.unfinishedUploads.set(state.fileId, updatedHandle);
       }
       await this.fileHandleStore.updateFileHandleProgress(
         state.fileId,
         resumeData,
-        state.progress.bytesUploaded
+        state.progress.bytesUploaded,
+        digest
       );
     }
   }
@@ -390,6 +428,14 @@ export class UploadQueue {
   }
 
   private handleComplete(fileId: string, url: string): void {
+    // Record the digest before any eviction so later duplicates can be skipped.
+    if (this.coordinator) {
+      const digest = this.uploaders.get(fileId)?.getIntegrity?.();
+      if (digest) {
+        this.coordinator.markCompleted(digest, fileId, url);
+      }
+    }
+
     this.activeUploads.delete(fileId);
     this.unfinishedUploads.delete(fileId);
     this.lastPersist.delete(fileId);
@@ -467,6 +513,28 @@ export class UploadQueue {
       return;
     }
 
+    // Content-addressed verification: re-hash the restored file and compare to
+    // the persisted digest. This catches same-size/same-mtime edits that the
+    // cheap check above misses. Only runs when integrity + verifyResume are on
+    // and a digest was persisted.
+    if (this.coordinator?.resolvedOptions.verifyResume && fileHandle.hash) {
+      try {
+        const actual = await this.coordinator.computeDigest(file);
+        if (actual.hex !== fileHandle.hash.hex || actual.algorithm !== fileHandle.hash.algorithm) {
+          this.logger.warn(
+            `Integrity mismatch on resume for ${fileHandle.name}. Removing from storage.`
+          );
+          await this.fileHandleStore.removeFileHandle(fileHandle.id);
+          this.unfinishedUploads.delete(fileHandle.id);
+          return;
+        }
+      } catch (error) {
+        // Couldn't verify (e.g. read error) — keep the record for a later retry.
+        this.logger.warn('Resume integrity check failed; deferring resume:', error);
+        return;
+      }
+    }
+
     const uploader = this.uploaderFactory({
       file: {
         id: fileHandle.id,
@@ -481,6 +549,7 @@ export class UploadQueue {
       resumeData: fileHandle.resumeData,
       bytesUploaded: fileHandle.bytesUploaded || 0,
       trackSpeed: this.options.trackSpeed,
+      digest: fileHandle.hash,
     });
 
     this.uploaders.set(fileHandle.id, uploader);

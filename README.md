@@ -23,6 +23,7 @@ A browser-only TypeScript upload library that provides a developer-friendly abst
 - 🔑 **Dynamic auth** — headers/metadata can be async functions, refreshed per request
 - ✅ **Built-in validation** — size / type / count enforced before upload
 - 🖥️ **SSR-safe** — construct on the server without touching IndexedDB
+- 🔒 **Integrity hashing (opt-in)** — streaming BLAKE3/SHA-256 in a Web Worker (Rust→wasm) for resume verification, server-side checksums, and dedup
 - 🎨 **UI-agnostic design** - bring your own UI or use our React components
 
 ## Installation
@@ -207,6 +208,25 @@ interface UploadEvents {
 
 Implement the `Uploader` interface and pass an `uploaderFactory` to upload anywhere (S3 multipart, a presigned `PUT`, etc.) while keeping the queue, persistence, progress, and React layers unchanged.
 
+### Integrity & checksums (opt-in)
+
+Set `integrity` to hash each file once (in a Web Worker, constant memory) before upload, then reuse the digest for content-addressed resume verification, a checksum sent to your server, and dedup:
+
+```typescript
+import { Uploadzx, TusDriver } from 'uploadzx';
+
+const uploader = new Uploadzx({
+  driver: new TusDriver({ endpoint: '/files/' }),
+  integrity: { algorithm: 'blake3' }, // or 'sha-256'
+});
+
+uploader.on('hash', (fileId, digest) => {
+  console.log(`${fileId}: ${digest.algorithm}:${digest.hex}`);
+});
+```
+
+The worker + wasm are loaded lazily from the `uploadzx/integrity` subpath, so nothing is added to your bundle unless you opt in. Vite/Webpack 5/Next resolve the worker automatically; otherwise pass `integrity.workerFactory`. See the Integrity & checksums guide in the docs for the full options and bundler notes.
+
 ## Browser Support
 
 - **Chrome/Edge**: Full support with File System Access API
@@ -235,7 +255,7 @@ pnpm example:vanilla
 # Install dependencies
 pnpm install
 
-# Build the library
+# Build the core library
 pnpm build
 
 # Watch for changes
@@ -243,6 +263,12 @@ pnpm dev
 
 # Run the test suite (Vitest + fake-indexeddb)
 pnpm test
+
+# Build the optional integrity (wasm) feature — needs Rust + wasm-pack
+#   rustup target add wasm32-unknown-unknown && cargo install wasm-pack
+pnpm build:integrity   # build:wasm + bundle worker/entry to dist/integrity
+pnpm build:all         # core + integrity (used by prepublishOnly)
+pnpm test:wasm         # cargo known-answer tests for the Rust crate
 
 # Run examples
 pnpm example:react
