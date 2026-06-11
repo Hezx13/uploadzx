@@ -16,6 +16,9 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: calc(var(--layout-bar-h) + var(--space-6));
   -webkit-text-size-adjust: 100%;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 
 body {
@@ -144,15 +147,16 @@ pre {
 
 /* ---------- Scrollbars ---------- */
 ::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-bg);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--color-border-strong);
-  border: 3px solid var(--color-bg);
+  border: 2px solid var(--color-bg);
+  border-radius: var(--radius-pill);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-accent);
