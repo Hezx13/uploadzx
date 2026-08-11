@@ -58,6 +58,7 @@ export const navigation: NavGroup[] = [
     label: 'Guides',
     items: [
       { slug: 'guides/persistence', title: 'Persistence & resume' },
+      { slug: 'guides/filesystem', title: 'Filesystem access' },
       { slug: 'guides/integrity', title: 'Integrity & checksums' },
       { slug: 'guides/validation', title: 'Validation' },
       { slug: 'guides/auth', title: 'Dynamic auth' },

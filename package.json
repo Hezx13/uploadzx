@@ -20,6 +20,19 @@
     "./integrity": {
       "types": "./dist/integrity/index.d.ts",
       "import": "./dist/integrity/index.js"
+    },
+    "./fs": {
+      "types": "./dist/fs/index.d.ts",
+      "import": "./dist/fs/index.js",
+      "require": "./dist/fs/index.cjs"
+    },
+    "./fs/raw": {
+      "types": "./dist/fs/raw/index.d.ts",
+      "import": "./dist/fs/raw/index.js"
+    },
+    "./fs/image/worker/thumb.worker": {
+      "types": "./dist/fs/image/worker/thumb.worker.d.ts",
+      "import": "./dist/fs/image/worker/thumb.worker.js"
     }
   },
   "files": [
@@ -31,7 +44,8 @@
     "build": "tsup",
     "build:wasm": "wasm-pack build crates/uploadzx-hash --target web --release --out-dir ../../src/integrity/wasm/pkg --out-name uploadzx_hash",
     "build:integrity": "pnpm run build:wasm && tsup --config tsup.integrity.config.ts && node -e \"require('fs').copyFileSync('src/integrity/wasm/pkg/uploadzx_hash_bg.wasm','dist/integrity/worker/uploadzx_hash_bg.wasm')\"",
-    "build:all": "pnpm run build && pnpm run build:integrity",
+    "build:fs": "tsup --config tsup.fs.config.ts",
+    "build:all": "pnpm run build && pnpm run build:integrity && pnpm run build:fs",
     "build:watch": "tsup --watch",
     "dev": "tsup --watch",
     "serve": "python -m http.server 8080 || python3 -m http.server 8080 || npx serve . -p 8080",
@@ -77,6 +91,7 @@
     "@types/react": "^18.2.0",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.10.1",
+    "exifr": "^7.1.3",
     "prettier": "^3.4.2",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3",
@@ -86,6 +101,12 @@
     "tus-js-client": "^4.3.1"
   },
   "peerDependencies": {
-    "react": ">=16.8.0"
+    "react": ">=16.8.0",
+    "exifr": "^7.1.3"
+  },
+  "peerDependenciesMeta": {
+    "exifr": {
+      "optional": true
+    }
   }
 }

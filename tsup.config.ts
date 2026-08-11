@@ -12,9 +12,7 @@ export default defineConfig([
     outDir: 'dist',
     target: 'es2020',
     minify: false,
-    // The worker-backed wasm hasher is loaded lazily from this subpath; keep it
-    // out of the core bundle so consumers who don't enable integrity pay nothing.
-    external: ['uploadzx/integrity'],
+  external: ['uploadzx/integrity', 'uploadzx/fs/raw'],
     noExternal: ['tus-js-client'],
     treeshake: true,
     bundle: true,
@@ -25,6 +23,21 @@ export default defineConfig([
         global: 'globalThis',
       };
     },
+  },
+  {
+    entry: ['src/fs/index.ts'],
+    format: ['cjs', 'esm'],
+    dts: true,
+    splitting: false,
+    sourcemap: true,
+    clean: false,
+    outDir: 'dist/fs',
+    target: 'es2020',
+    minify: false,
+    external: ['uploadzx/fs/raw', 'exifr'],
+    treeshake: true,
+    bundle: true,
+    platform: 'browser',
   },
   {
     entry: ['src/react/index.ts'],
@@ -38,7 +51,7 @@ export default defineConfig([
     // Keep the worker-backed wasm hasher lazy here too — without this the
     // `import('uploadzx/integrity')` in the core gets inlined into the React
     // bundle, pulling the worker + wasm into every React consumer.
-    external: ['react', 'uploadzx/integrity'],
+    external: ['react', 'uploadzx/integrity', 'uploadzx/fs/raw', 'exifr'],
     treeshake: true,
     bundle: true,
     platform: 'browser',

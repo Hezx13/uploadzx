@@ -22,8 +22,17 @@ src/
 ├─ react/
 │  ├─ index.ts              # uploadzx/react exports
 │  ├─ UploadStore.ts        # external store (useSyncExternalStore)
-│  ├─ hooks/                # useUploadzx, useUploadState, useUploadItem, …
+│  ├─ hooks/                # useUploadzx, useUploadState, useFileSystem, …
 │  └─ components/           # UploadzxProvider, UploadDropzone
+├─ fs/                      # uploadzx/fs subpath (filesystem access)
+│  ├─ index.ts              # FileSystemManager facade
+│  ├─ FileSystemManager.ts
+│  ├─ access/               # DirectoryPicker, Saver, pick
+│  ├─ permissions/          # PermissionManager
+│  ├─ store/                # FsStore + migrations
+│  ├─ watch/                # FileWatcher
+│  ├─ image/                # metadata, thumbnails, worker
+│  └─ raw/                  # uploadzx/fs/raw (lazy RAW decoder)
 ├─ integrity/              # opt-in hashing (uploadzx/integrity subpath)
 │  ├─ index.ts             # public entry (lazy-loaded)
 │  ├─ IntegrityCoordinator.ts # compute-once cache + dedup registry

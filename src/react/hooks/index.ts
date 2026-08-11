@@ -1,4 +1,5 @@
 export { useFilePicker } from './useFilePicker';
+export { useFileSystemManager, useFsPermissions, useFsEntries } from './useFileSystem';
 export { useUploadProgress, useUploadStatus } from './useUploadProgress';
 export { useUploadState, useUploadSelector } from './useUploadState';
 export { useStoreSelector } from './useStoreSelector';

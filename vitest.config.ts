@@ -8,6 +8,9 @@ export default defineConfig({
       // Tests inject their own hasher and never spawn the worker, but Vite still
       // resolves the literal dynamic-import specifier at transform time.
       'uploadzx/integrity': fileURLToPath(new URL('./src/integrity/index.ts', import.meta.url)),
+      'uploadzx/fs': fileURLToPath(new URL('./src/fs/index.ts', import.meta.url)),
+      'uploadzx/fs/raw': fileURLToPath(new URL('./src/fs/raw/index.ts', import.meta.url)),
+      exifr: fileURLToPath(new URL('./test/stubs/exifr.ts', import.meta.url)),
     },
   },
   test: {

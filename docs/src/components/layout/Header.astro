@@ -20,7 +20,16 @@ const base = import.meta.env.BASE_URL;
   }
 
   <a class="header__brand" href={base}>
-    <span class="header__logo">u</span>
+    <span class="header__logo">
+      <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <g stroke="currentColor" stroke-width="5" stroke-linecap="butt" stroke-linejoin="miter">
+          <path d="M16 6 L32 18" />
+          <path d="M32 6 L16 18" />
+          <path d="M16 30 L24 24 L32 30" />
+          <path d="M24 24 L24 42" />
+        </g>
+      </svg>
+    </span>
     <span class="header__name">{site.name}</span>
     <span class="header__ver">v{site.version}</span>
   </a>
@@ -64,9 +73,10 @@ const base = import.meta.env.BASE_URL;
     place-items: center;
     background: var(--color-accent);
     color: var(--color-on-accent);
-    font-family: var(--font-display);
-    font-weight: var(--weight-bold);
-    font-size: 17px;
+  }
+  .header__logo svg {
+    width: 20px;
+    height: 20px;
   }
   .header__name {
     font-family: var(--font-display);
