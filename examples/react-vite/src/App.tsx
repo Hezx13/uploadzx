@@ -19,8 +19,18 @@ const uploadOptions: UseUploadzxOptions = {
   autoStart: true,
   maxConcurrent: 3,
   trackSpeed: true,
+  // Opt into streaming integrity hashing. Each file is hashed once in a Web
+  // Worker (Rust → wasm) before upload; the digest is shown per-row and sent to
+  // the server as `checksum: "blake3:<hex>"` metadata. The worker + wasm load
+  // lazily the first time a file is hashed — see the row's integrity badge.
+  integrity: {
+    algorithm: 'blake3',
+  },
   filePickerOptions: {
     useFileSystemAccess: true,
+  },
+  onHash: (fileId, digest) => {
+    console.info('[uploadzx] hashed (wasm)', fileId, `${digest.algorithm}:${digest.hex}`)
   },
   onComplete: (fileId, url) => {
     console.info('[uploadzx] completed', fileId, url)

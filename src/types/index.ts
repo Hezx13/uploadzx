@@ -1,5 +1,6 @@
 import type { Logger } from '../utils/logger';
 import type { UploadDriver, ResumeData } from '../transport/types';
+import type { IntegrityHasher } from '../integrity/IntegrityHasher';
 
 // Re-export transport types
 export type { UploadDriver, ResumeData } from '../transport/types';
@@ -30,6 +31,66 @@ export interface UploadState {
   error?: Error;
   url?: string;
   file: File;
+  /**
+   * Content digest of the file, present once integrity hashing is enabled and the
+   * pre-upload hash pass has completed. See {@link IntegrityOptions}.
+   */
+  integrity?: IntegrityDigest;
+}
+
+/** Hashing algorithm used for integrity digests. */
+export type IntegrityAlgorithm = 'blake3' | 'sha-256';
+
+/**
+ * A computed content digest. `hex` is the lowercase-hex encoding of the raw
+ * digest produced by `algorithm`.
+ */
+export interface IntegrityDigest {
+  algorithm: IntegrityAlgorithm;
+  hex: string;
+}
+
+/**
+ * Opt-in streaming integrity hashing. When set on {@link QueueOptions}, each
+ * file is hashed once (in a Web Worker, in constant memory) before upload and
+ * the digest is reused for resume verification, the tus checksum metadata, and
+ * dedup. Absent this option, no hashing code or wasm is loaded.
+ */
+export interface IntegrityOptions {
+  /** Digest algorithm. Defaults to `'blake3'`. */
+  algorithm?: IntegrityAlgorithm;
+  /**
+   * Re-hash a restored file and compare against the persisted digest before
+   * resuming, dropping the record on mismatch. Defaults to `true`.
+   */
+  verifyResume?: boolean;
+  /**
+   * Send the digest to the server as upload metadata (tus) for end-to-end
+   * integrity. Defaults to `true`.
+   */
+  sendToServer?: boolean;
+  /**
+   * Metadata key under which the digest is sent, formatted as
+   * `"<algorithm>:<hex>"`. Defaults to `'checksum'`.
+   */
+  metadataKey?: string;
+  /**
+   * Skip uploading a file whose digest matches one already completed/known this
+   * session, short-circuiting it to `completed`. Defaults to `true`.
+   */
+  dedup?: boolean;
+  /** File slice size fed to the hasher, in bytes. Defaults to 8 MiB. */
+  chunkSize?: number;
+  /**
+   * Provide the Worker yourself (escape hatch for bundlers that can't resolve
+   * the default `new URL('...', import.meta.url)` worker reference).
+   */
+  workerFactory?: () => Worker;
+  /**
+   * Inject a custom hasher implementation. Defaults to a lazily-loaded
+   * worker-backed wasm hasher. Primarily useful for tests.
+   */
+  hasher?: IntegrityHasher;
 }
 
 /**
@@ -91,6 +152,13 @@ export interface QueueOptions {
    * `false` to keep the previous behavior of retaining completed uploaders.
    */
   autoEvictCompleted?: boolean;
+  /**
+   * Opt-in streaming integrity hashing (BLAKE3 / SHA-256) in a Web Worker. When
+   * provided, each file is hashed once before upload and the digest powers
+   * resume verification, the tus checksum metadata, and dedup. Omit to load no
+   * hashing code at all.
+   */
+  integrity?: IntegrityOptions;
 }
 
 export interface UploadEvents {
@@ -99,6 +167,8 @@ export interface UploadEvents {
   onComplete?: (fileId: string, url: string) => void;
   onError?: (fileId: string, error: Error) => void;
   onCancel?: (fileId: string) => void;
+  /** Fired once a file's integrity digest has been computed (pre-upload). */
+  onHash?: (fileId: string, digest: IntegrityDigest) => void;
 }
 
 /** Event channels for the multi-listener emitter (`on`/`off`/`once`). */
@@ -108,6 +178,8 @@ export interface UploadEventMap {
   complete: (fileId: string, url: string) => void;
   error: (fileId: string, error: Error) => void;
   cancel: (fileId: string) => void;
+  /** Emitted with the computed digest once the pre-upload hash pass finishes. */
+  hash: (fileId: string, digest: IntegrityDigest) => void;
   [key: string]: (...args: any[]) => void;
 }
 
@@ -128,6 +200,8 @@ export interface StoredFileHandle {
   bytesUploaded?: number;
   /** Epoch ms when this record was first persisted. Used for TTL reaping. */
   createdAt?: number;
+  /** Persisted content digest, used to verify the file on resume. */
+  hash?: IntegrityDigest;
 }
 
 /**
@@ -143,6 +217,8 @@ export interface Uploader {
   getState(): UploadState;
   getResumeData(): ResumeData | undefined;
   canResume(): boolean;
+  /** The computed content digest, if integrity hashing is enabled. */
+  getIntegrity?(): IntegrityDigest | undefined;
 }
 
 /**
@@ -158,7 +234,8 @@ export interface PersistenceAdapter {
   updateFileHandleProgress(
     id: string,
     resumeData: ResumeData | undefined,
-    bytesUploaded: number
+    bytesUploaded: number,
+    hash?: IntegrityDigest
   ): Promise<void>;
   getFileFromHandleByID(id: string): Promise<File | null>;
   clear(): Promise<void>;

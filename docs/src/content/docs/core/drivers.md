@@ -35,6 +35,10 @@ const same = tus({ endpoint: '/files/' });
 | `headers`     | `DynamicValue<Record<string,string>>` | —                            | Static or (async) factory; resolved per request. |
 | `metadata`    | `DynamicValue<Record<string,string>>` | —                            | Merged with auto `filename`/`filetype`.     |
 
+> [!NOTE] When [integrity hashing](/docs/guides/integrity) is enabled with
+> `sendToServer`, the tus driver also attaches the digest as metadata, e.g.
+> `checksum: "blake3:<hex>"` (key configurable via `integrity.metadataKey`).
+
 ## HttpPutDriver — simple, non-resumable
 
 A single `PUT` or `POST` to one URL. Good for presigned S3/GCS URLs and small

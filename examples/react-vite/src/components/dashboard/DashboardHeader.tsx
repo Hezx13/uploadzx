@@ -1,7 +1,7 @@
 import { Button } from '@base-ui/react/button'
 import { Dialog } from '@base-ui/react/dialog'
 import { Menu } from '@base-ui/react/menu'
-import { MoreHorizontal, Pause, Play, RotateCcw, Settings, Trash2, Upload } from 'lucide-react'
+import { MoreHorizontal, Pause, Play, RotateCcw, Settings, ShieldCheck, Trash2, Upload } from 'lucide-react'
 import { useQueueActions, useUploadzxActions } from 'uploadzx/react'
 import { IconButton } from './IconButton'
 import { SettingsDialog } from './SettingsDialog'
@@ -25,6 +25,11 @@ export function DashboardHeader({ metrics, compactRows, onCompactRowsChange }: D
       <div>
         <div className={styles.eyebrow}>uploadzx React example</div>
         <h1 className={styles.title}>Upload operations</h1>
+        <span className={styles.featureChip}>
+          <ShieldCheck size={13} />
+          BLAKE3 integrity
+          <span className={styles.featureChipTag}>wasm worker</span>
+        </span>
       </div>
 
       <div className={styles.headerActions}>

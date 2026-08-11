@@ -1,4 +1,4 @@
-import type { UploadProgress, UploadState, UploadStatus } from '../types';
+import type { IntegrityDigest, UploadProgress, UploadState, UploadStatus } from '../types';
 
 /**
  * The legal status transitions for a single upload. Anything not listed is
@@ -76,5 +76,11 @@ export class UploadStateMachine {
     if (emit) {
       this.onChange(this.getState());
     }
+  }
+
+  /** Attach the computed content digest and notify, without a status change. */
+  setIntegrity(integrity: IntegrityDigest): void {
+    this.state = { ...this.state, integrity };
+    this.onChange(this.getState());
   }
 }

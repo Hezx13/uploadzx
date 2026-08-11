@@ -26,6 +26,7 @@ new Uploadzx(options: UploadzxOptions, events?: UploadEvents);
 | `persistenceTtlMs`   | `number`                      | `604800000` (7d)   | Max age of persisted records before they're reaped on init. `0` disables reaping.            |
 | `autoEvictCompleted` | `boolean`                     | `true`             | Drop a completed upload's in-memory state to release its `File`. See [concepts](/docs/getting-started/concepts). |
 | `store`              | `PersistenceAdapter`          | IndexedDB          | Swap the persistence backend (e.g. an in-memory store for tests).                            |
+| `integrity`          | `IntegrityOptions`            | —                  | Opt-in streaming hashing (BLAKE3/SHA-256) for resume verification, checksum metadata, and dedup. See [Integrity](/docs/guides/integrity). |
 | `debug`              | `boolean`                     | `false`            | Enable verbose internal logging. Off by default — the library is silent otherwise.           |
 | `logger`             | `Partial<Logger>`             | console            | Custom sink: `{ debug, warn, error }`. Overrides the default console logger.                  |
 | `onInit`             | `() => void`                  | —                  | Called once the queue is initialized and ready. (Prefer `await ready`.)                       |

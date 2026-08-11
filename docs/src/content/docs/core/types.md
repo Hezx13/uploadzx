@@ -39,6 +39,26 @@ interface UploadState {
   error?: Error;
   url?: string;
   file: File;
+  integrity?: IntegrityDigest; // present once hashing completes (opt-in)
+}
+
+// Integrity hashing (opt-in) — see /docs/guides/integrity
+type IntegrityAlgorithm = 'blake3' | 'sha-256';
+
+interface IntegrityDigest {
+  algorithm: IntegrityAlgorithm;
+  hex: string; // lowercase-hex digest
+}
+
+interface IntegrityOptions {
+  algorithm?: IntegrityAlgorithm; // default 'blake3'
+  verifyResume?: boolean;         // default true
+  sendToServer?: boolean;         // default true
+  metadataKey?: string;           // default 'checksum'
+  dedup?: boolean;                // default true
+  chunkSize?: number;             // default 8 MiB
+  workerFactory?: () => Worker;   // bundler escape hatch
+  hasher?: IntegrityHasher;       // inject a custom hasher (tests)
 }
 
 // Headers/metadata can be static OR an (async) factory resolved per request.
@@ -60,6 +80,7 @@ interface StoredFileHandle {
   resumeData?: ResumeData;
   bytesUploaded?: number;
   createdAt?: number;
+  hash?: IntegrityDigest; // persisted digest, for resume verification
 }
 ```
 

@@ -28,7 +28,10 @@ layer stay a thin shell over the framework-agnostic core.
 │     │              ▼                                           │
 │     │        UploadDriver  ── TusDriver · HttpPutDriver · …    │
 │     │                                                          │
-│     └── PersistenceAdapter ── FileHandleStore (IndexedDB)      │
+│     ├── PersistenceAdapter ── FileHandleStore (IndexedDB)      │
+│     │                                                          │
+│     └── IntegrityCoordinator (opt-in)                          │
+│            └── HashWorkerClient → hash.worker → wasm Hasher    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -45,6 +48,10 @@ layer stay a thin shell over the framework-agnostic core.
   the final 100% tick always fires.
 - **Persistence writes are throttled too** (~1&nbsp;s per file) and forced on
   pause/error so an interruption is always recoverable.
+- **Integrity hashing is opt-in and off the main thread.** When enabled, the
+  `IntegrityCoordinator` runs a Rust→wasm hasher inside a Web Worker, loaded
+  lazily from the `uploadzx/integrity` subpath, so the core bundle and runtime are
+  untouched for everyone else. See [Integrity & checksums](/docs/guides/integrity).
 
 These invariants are what let you add a [custom driver](/docs/core/custom-driver)
 or a [persistence adapter](/docs/guides/persistence) without touching the queue,

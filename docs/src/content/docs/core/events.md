@@ -14,6 +14,7 @@ or stalls the queue.
 | `complete`    | `(fileId, url) => void`         | A file finishes successfully.                         |
 | `error`       | `(fileId, error) => void`       | A file fails, or validation rejects it.              |
 | `cancel`      | `(fileId) => void`              | A file transitions to cancelled.                     |
+| `hash`        | `(fileId, digest) => void`      | A file's integrity digest is computed (pre-upload), when `integrity` is enabled. |
 
 ```ts
 const off = uploader.on('progress', (p) => {
@@ -26,3 +27,7 @@ off(); // unsubscribe the progress listener
 > [!NOTE] The constructor's second argument (`UploadEvents`) is bridged onto the
 > same emitter, so you can mix both styles. The bag's `onStateChange` receives a
 > single `UploadState` argument.
+
+> [!NOTE] When `integrity` is enabled, the computed digest is also available on
+> `state.integrity` (`{ algorithm, hex }`) in `stateChange`. See
+> [Integrity & checksums](/docs/guides/integrity).

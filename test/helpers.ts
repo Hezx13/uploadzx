@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   PersistenceAdapter,
   StoredFileHandle,
@@ -8,7 +9,14 @@ import type {
   UploadState,
   UploadDriver,
   ResumeData,
+  IntegrityDigest,
 } from '../src/types';
+import type {
+  UploadDriverContext,
+  UploadDriverHandlers,
+  UploadSession,
+} from '../src/transport/types';
+import type { HashFileOptions, IntegrityHasher } from '../src/integrity/IntegrityHasher';
 
 export function makeUploadFile(overrides: Partial<UploadFile> = {}): UploadFile {
   const name = overrides.name ?? 'file.bin';
@@ -154,10 +162,11 @@ export class InMemoryStore implements PersistenceAdapter {
   async updateFileHandleProgress(
     id: string,
     resumeData: ResumeData | undefined,
-    bytesUploaded: number
+    bytesUploaded: number,
+    hash?: IntegrityDigest
   ): Promise<void> {
     const r = this.records.get(id);
-    if (r) this.records.set(id, { ...r, resumeData, bytesUploaded });
+    if (r) this.records.set(id, { ...r, resumeData, bytesUploaded, hash: hash ?? r.hash });
   }
   async getFileFromHandleByID(id: string): Promise<File | null> {
     return this.files.get(id) ?? null;
@@ -182,3 +191,100 @@ export function mockHandle(file: File): FileSystemFileHandle {
 
 /** Flushes pending microtasks so async queue work settles. */
 export const tick = () => new Promise<void>(r => setTimeout(r, 0));
+
+// --- integrity test doubles -------------------------------------------------
+
+/**
+ * A deterministic {@link IntegrityHasher} backed by Node's SHA-256. The reported
+ * `algorithm` is whatever the caller asked for (so metadata formatting can be
+ * asserted), but the hex is always a real, content-stable digest, which is all
+ * the resume/dedup logic depends on.
+ */
+export function makeShaHasher(): IntegrityHasher {
+  return {
+    async hashFile(file: Blob, opts: HashFileOptions): Promise<IntegrityDigest> {
+      if (opts.signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      const buf = new Uint8Array(await file.arrayBuffer());
+      // Yield once so abort can interleave between read and digest.
+      await Promise.resolve();
+      if (opts.signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      const hex = createHash('sha256').update(buf).digest('hex');
+      opts.onProgress?.(file.size, file.size);
+      return { algorithm: opts.algorithm, hex };
+    },
+  };
+}
+
+/** Compute the same digest the fake hasher would, for assertions. */
+export function shaHex(content: string): string {
+  return createHash('sha256').update(Buffer.from(content)).digest('hex');
+}
+
+/** A hasher whose `hashFile` stays pending until released or aborted. */
+export class ControllableHasher implements IntegrityHasher {
+  calls = 0;
+  private pending: Array<{ resolve: (d: IntegrityDigest) => void; reject: (e: Error) => void }> = [];
+
+  hashFile(_file: Blob, opts: HashFileOptions): Promise<IntegrityDigest> {
+    this.calls += 1;
+    return new Promise<IntegrityDigest>((resolve, reject) => {
+      this.pending.push({ resolve, reject });
+      opts.signal?.addEventListener(
+        'abort',
+        () => reject(new DOMException('aborted', 'AbortError')),
+        { once: true }
+      );
+    });
+  }
+
+  resolveAll(hex = 'deadbeef', algorithm: IntegrityDigest['algorithm'] = 'blake3'): void {
+    this.pending.forEach(p => p.resolve({ algorithm, hex }));
+    this.pending = [];
+  }
+}
+
+/** A live, manually-driven session for the {@link ControllableDriver}. */
+export class ControllableSession implements UploadSession {
+  private resolveFn?: () => void;
+  private rejectFn?: (e: Error) => void;
+
+  constructor(
+    public ctx: UploadDriverContext,
+    public handlers: UploadDriverHandlers
+  ) {}
+
+  start(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      this.resolveFn = resolve;
+      this.rejectFn = reject;
+    });
+  }
+  async pause(): Promise<void> {
+    this.handlers.onCheckpoint({ uploadUrl: 'https://tus.example/u/1' });
+  }
+  progress(bytes: number): void {
+    this.handlers.onProgress(bytes);
+  }
+  succeed(url = 'https://tus.example/u/1'): void {
+    this.handlers.onSuccess({ url });
+    this.resolveFn?.();
+  }
+  fail(error: Error): void {
+    this.rejectFn?.(error);
+  }
+}
+
+/** A driver that records each session (and the context it was handed). */
+export class ControllableDriver implements UploadDriver {
+  readonly name = 'ctl';
+  readonly resumable = true;
+  sessions: ControllableSession[] = [];
+  lastCtx?: UploadDriverContext;
+
+  createSession(ctx: UploadDriverContext, handlers: UploadDriverHandlers): UploadSession {
+    this.lastCtx = ctx;
+    const session = new ControllableSession(ctx, handlers);
+    this.sessions.push(session);
+    return session;
+  }
+}

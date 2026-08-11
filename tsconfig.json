@@ -21,7 +21,8 @@
     "noEmit": true,
     "baseUrl": "./",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "uploadzx/integrity": ["src/integrity/index.ts"]
     }
   },
   "include": [

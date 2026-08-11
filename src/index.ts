@@ -17,6 +17,21 @@ export { ProgressTracker } from './transport/ProgressTracker';
 export { TusDriver, tus, type TusDriverOptions, type TusResumeData } from './transport/TusDriver';
 export { HttpPutDriver, httpPut, type HttpPutDriverOptions } from './transport/HttpPutDriver';
 
+// Integrity hashing (opt-in). Only the wasm-free policy/types are re-exported
+// from the core entry; the worker-backed hasher (and the wasm it loads) lives
+// behind the `uploadzx/integrity` subpath so it never enters the core bundle.
+export {
+  IntegrityCoordinator,
+  resolveIntegrityOptions,
+  type ResolvedIntegrityOptions,
+  type GetDigestOptions,
+} from './integrity/IntegrityCoordinator';
+export {
+  DEFAULT_HASH_CHUNK_SIZE,
+  type IntegrityHasher,
+  type HashFileOptions,
+} from './integrity/IntegrityHasher';
+
 export * from './utils';
 
 // Main library class
