@@ -7,24 +7,57 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A browser-only TypeScript upload library that provides a developer-friendly abstraction over tus-js-client for resumable file uploads with React integration.
+A browser-only TypeScript library for **resumable uploads** and **native filesystem access**. It provides a developer-friendly abstraction over tus-js-client for uploads, plus a decoupled `uploadzx/fs` module for picking, persisting, watching, and exporting files — with optional image metadata, thumbnails, and RAW decoding.
 
-## Features
+Both modules are **UI-agnostic**: they emit state and expose actions; you bring your own interface (or use the React bindings).
 
-- 🚀 **Resumable uploads** using tus protocol
-- 📱 **Cross-browser compatibility** including Safari fallback
-- ⚡ **File System Access API** support for modern browsers
-- 🎯 **React integration** with granular, per-file subscriptions (no list-wide re-renders)
-- 📊 **Progress tracking** with detailed upload statistics
-- ⏸️ **Pause, resume, and cancel** with a concurrency-capped queue
-- 💾 **Persistent upload state** using IndexedDB (with TTL reaping + quota guards)
-- 🔌 **Pluggable transport & storage** — swap tus for S3/presigned via interfaces
-- 🔔 **Multi-listener events** (`on`/`off`/`once`) plus the classic callback bag
-- 🔑 **Dynamic auth** — headers/metadata can be async functions, refreshed per request
-- ✅ **Built-in validation** — size / type / count enforced before upload
-- 🖥️ **SSR-safe** — construct on the server without touching IndexedDB
-- 🔒 **Integrity hashing (opt-in)** — streaming BLAKE3/SHA-256 in a Web Worker (Rust→wasm) for resume verification, server-side checksums, and dedup
-- 🎨 **UI-agnostic design** - bring your own UI or use our React components
+## Package entry points
+
+| Import | Purpose |
+| ------ | ------- |
+| `uploadzx` | Core upload queue, file picker, tus/HTTP drivers |
+| `uploadzx/react` | React hooks and components for uploads + filesystem |
+| `uploadzx/fs` | Filesystem access (pick, persist, watch, export, image helpers) |
+| `uploadzx/fs/raw` | Optional RAW decoder (wasm injectable, lazy-loaded) |
+| `uploadzx/integrity` | Optional streaming BLAKE3/SHA-256 hashing (wasm, lazy-loaded) |
+
+---
+
+## Features at a glance
+
+### Upload (`uploadzx`)
+
+- Resumable uploads via tus protocol (or custom drivers)
+- Concurrency-capped queue with pause, resume, and cancel
+- Progress tracking with optional upload speed
+- Persistent upload state in IndexedDB (TTL reaping + quota guards)
+- File System Access API support with Safari/Firefox fallbacks
+- Pluggable transport (`TusDriver`, `HttpPutDriver`, custom) and storage adapters
+- Multi-listener events (`on`/`off`/`once`) plus a classic callback bag
+- Dynamic auth — headers/metadata resolved per request
+- Built-in validation (size, MIME type, file count)
+- SSR-safe construction (no IndexedDB until the browser runs)
+
+### Filesystem (`uploadzx/fs`)
+
+- Native file and **directory** picking with recursive import
+- Gesture-aware permission handling (query-first, no nag on denied)
+- IndexedDB persistence for handles + metadata (migration-ready schema)
+- Storage-efficient: handles on Chrome/Edge; size-capped byte cache on Safari/Firefox
+- LRU-capped thumbnail cache with separate byte budget
+- Save / export via `showSaveFilePicker` and save-in-place via `createWritable`
+- Live file watching (`FileSystemObserver` + polling fallback)
+- Image metadata (EXIF/IPTC/XMP) via lazy-loaded `exifr`
+- Thumbnail generation in a Web Worker (main-thread fallback)
+- Optional RAW decoding behind `uploadzx/fs/raw`
+
+### Cross-cutting
+
+- React integration with granular per-file subscriptions (no list-wide re-renders)
+- Opt-in integrity hashing in a Web Worker (Rust → wasm) for checksums and dedup
+- Full TypeScript types throughout
+
+---
 
 ## Installation
 
@@ -36,45 +69,381 @@ pnpm add uploadzx
 yarn add uploadzx
 ```
 
-## Quick Start
+Optional: `exifr` is used for image metadata when you call `readMetadata()`. It is listed as an optional dependency and loaded only when needed.
 
-### Vanilla JavaScript/TypeScript
+---
+
+## Quick start — Uploads
 
 ```typescript
-import Uploadzx from 'uploadzx';
+import Uploadzx, { TusDriver } from 'uploadzx';
 
 const uploader = new Uploadzx({
-  endpoint: 'https://your-tus-endpoint.com/files',
+  driver: new TusDriver({
+    endpoint: 'https://your-tus-endpoint.com/files/',
+    chunkSize: 1024 * 1024,
+    headers: async () => ({ Authorization: `Bearer ${await getAccessToken()}` }),
+  }),
   maxConcurrent: 3,
   autoStart: true,
-  // Headers/metadata may be a value OR an (async) function, resolved per
-  // request — so a long-paused upload resumes with a fresh token.
-  headers: async () => ({ Authorization: `Bearer ${await getAccessToken()}` }),
-  // Enforced before a file enters the queue.
   validation: { maxSize: 500 * 1024 * 1024, allowedTypes: ['image/*', 'video/*'] },
-  filePickerOptions: {
-    multiple: true,
-    useFileSystemAccess: true,
-  },
+  filePickerOptions: { multiple: true, useFileSystemAccess: true },
 });
 
-// Multi-listener events (each `on` returns an unsubscribe function):
-const off = uploader.on('progress', (p) => console.log(`${p.fileId}: ${p.percentage}%`));
-uploader.on('complete', (fileId, tusUrl) => console.log(`Completed: ${tusUrl}`));
-uploader.on('error', (fileId, err) => console.error(`Error for ${fileId}:`, err));
+uploader.on('progress', (p) => console.log(`${p.fileId}: ${p.percentage}%`));
+uploader.on('complete', (fileId, url) => console.log(`Completed: ${url}`));
+uploader.on('error', (fileId, err) => console.error(err));
 
-// Wait for any prior unfinished uploads to load before driving the queue.
 await uploader.ready;
-
-// Pick files and start uploading
 await uploader.pickAndUploadFiles();
 ```
 
-> The classic single-callback bag still works too — pass `{ onProgress, onComplete, onError, onStateChange, onCancel }` as the second constructor argument. Note `onStateChange` receives a single `UploadState` argument.
+> **Note:** Pass a `driver` (e.g. `new TusDriver({ endpoint })`), not a bare `endpoint` on the constructor. This keeps the queue protocol-agnostic.
 
-### React Integration
+---
 
-Use the focused hooks so a row only re-renders when **its own** file changes:
+## Quick start — Filesystem
+
+```typescript
+import { FileSystemManager } from 'uploadzx/fs';
+
+const fs = new FileSystemManager({
+  filePicker: { accept: 'image/*', useFileSystemAccess: true },
+});
+
+await fs.ready;
+
+// Pick files (pass withinGesture=true when called from a click handler)
+const entries = await fs.pickFiles(true);
+
+// Or import an entire folder
+const { entries: folder } = await fs.pickDirectory(true);
+
+// Read metadata and generate a thumbnail
+const meta = await fs.readMetadata(entries[0].id, true);
+const thumb = await fs.getThumbnail(entries[0].id, true);
+
+// After a page reload, reconnect with one gesture
+if (fs.pendingPermissions().length) {
+  await fs.reconnect(true);
+}
+```
+
+---
+
+## Feature reference
+
+### 1. Resumable uploads
+
+Uploadzx wraps [tus-js-client](https://github.com/tus/tus-js-client) in a queue that manages concurrency, state, and persistence.
+
+**What you get**
+
+- Files survive tab closes: resume data and file handles are stored in IndexedDB
+- Pause/resume per file or the whole queue
+- Cancel in-flight uploads via `AbortController`
+- Automatic eviction of completed uploads (configurable) to release memory
+
+**Key APIs**
+
+```typescript
+await uploader.pauseUpload(fileId);
+await uploader.resumeUpload(fileId);
+await uploader.cancelUpload(fileId);
+await uploader.getUnfinishedUploads();
+await uploader.restoreUnfinishedUpload(fileId);
+```
+
+**Persistence behaviour**
+
+| Browser | Stored | Resume behaviour |
+| ------- | ------ | ---------------- |
+| Chrome / Edge | `FileSystemFileHandle` + checkpoint | Re-reads file from disk; may prompt for permission |
+| Safari / Firefox | File blob in IndexedDB + checkpoint | Resumes from cached blob (quota-guarded) |
+
+Records older than `persistenceTtlMs` (default 7 days) are reaped on init. Set `0` to disable.
+
+---
+
+### 2. Upload queue & transport drivers
+
+The queue owns validation, concurrency, events, and persistence. The **driver** owns the wire protocol.
+
+**Built-in drivers**
+
+```typescript
+import { TusDriver, HttpPutDriver } from 'uploadzx';
+
+// tus — resumable, chunked
+new TusDriver({ endpoint: '/files/', chunkSize: 8 * 1024 * 1024 });
+
+// Simple PUT/POST — non-resumable
+new HttpPutDriver({ url: 'https://api.example.com/upload', method: 'PUT' });
+```
+
+**Custom driver**
+
+Implement `UploadDriver` and pass a factory via `uploaderFactory` on `UploadQueue` (or use the queue directly). The queue handles progress, checkpoints, and state transitions; your driver only speaks the protocol.
+
+**Queue options**
+
+```typescript
+interface QueueOptions {
+  driver: UploadDriver;
+  maxConcurrent?: number;        // default 3
+  autoStart?: boolean;
+  validation?: FileValidationOptions;
+  store?: PersistenceAdapter;   // swap IndexedDB for memory/server
+  persistenceTtlMs?: number;
+  trackSpeed?: boolean;
+  autoEvictCompleted?: boolean; // default true
+  integrity?: IntegrityOptions; // see below
+}
+```
+
+---
+
+### 3. File picking (upload core)
+
+`FilePicker` supports two paths:
+
+- **File System Access API** (`showOpenFilePicker`) — returns persistent `FileSystemFileHandle`s on Chrome/Edge
+- **`<input type="file">`** — universal fallback; no cross-session handle persistence
+
+```typescript
+const files = await uploader.pickFiles();
+// or configure via filePickerOptions on construction:
+// { accept: 'image/*', multiple: true, useFileSystemAccess: true }
+```
+
+Drag-and-drop helpers live in the core utils:
+
+```typescript
+import { getFilesFromDragEvent } from 'uploadzx';
+
+dropzone.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  const items = await getFilesFromDragEvent(e);
+  await uploader.addFiles(items.map(({ file, handle }) => ({
+    id: crypto.randomUUID(),
+    file,
+    fileHandle: handle,
+    name: file.name,
+    size: file.size,
+    type: file.type,
+  })));
+});
+```
+
+---
+
+### 4. Filesystem module (`uploadzx/fs`)
+
+A standalone module for apps that need native-feeling file access without uploads — photo libraries, editors, import/export flows.
+
+#### FileSystemManager
+
+The main facade wires picking, storage, permissions, watching, and image helpers:
+
+```typescript
+import { FileSystemManager } from 'uploadzx/fs';
+
+const fs = new FileSystemManager({
+  filePicker: { accept: 'image/*', useFileSystemAccess: true },
+  maxCachedFileBytes: 50 * 1024 * 1024,   // Safari byte-cache cap
+  thumbCacheBudgetBytes: 100 * 1024 * 1024,
+  watchPollIntervalMs: 5000,
+  debug: false,
+});
+```
+
+| Method | Description |
+| ------ | ----------- |
+| `pickFiles(withinGesture)` | Open file picker, persist entries |
+| `pickDirectory(withinGesture)` | Import folder (recursive on native picker) |
+| `pickFromDrag(event, withinGesture)` | Handle drag-and-drop imports |
+| `list(parentId?)` | List persisted entries |
+| `readFile(id, withinGesture)` | Get `File` for an entry |
+| `readMetadata(id, withinGesture)` | EXIF/IPTC/XMP + dimensions |
+| `getThumbnail(id, withinGesture)` | LRU-cached WebP/JPEG thumbnail |
+| `saveAs(blob, opts)` | Export via save picker (download fallback) |
+| `saveInPlace(handle, blob, withinGesture)` | Overwrite via `createWritable` |
+| `reconnect(withinGesture)` | Re-request permissions after reload |
+| `watchDirectory(dirHandle)` | Start live change notifications |
+| `decodeRaw(id, withinGesture)` | Decode RAW via configured decoder |
+
+**Events**
+
+```typescript
+fs.on('add', (entry) => {});
+fs.on('change', (entry) => {});
+fs.on('remove', (id) => {});
+fs.on('permissionchange', (pendingHandles) => {});
+fs.on('error', (err) => {});
+```
+
+#### Permissions
+
+`PermissionManager` is designed to feel native and avoid permission fatigue:
+
+1. **Query always** — safe to call outside a user gesture
+2. **Request only in a gesture** — pass `withinGesture: true` from click handlers
+3. **Remember denied** — won't re-prompt for the session
+4. **Directory grant covers children** — one folder pick unlocks many files
+5. **Single `permissionchange` event** — drive one "Reconnect your photos" banner
+
+```typescript
+fs.on('permissionchange', (pending) => {
+  if (pending.length) showReconnectBanner();
+});
+
+reconnectBtn.onclick = () => fs.reconnect(true);
+```
+
+#### Storage & migrations
+
+`FsStore` uses a versioned IndexedDB schema with an ordered migration runner (`DB_VERSION`). Records carry a `schemaVersion` for lazy per-record reshaping without full DB bumps.
+
+Separate object stores:
+
+- `records` — metadata (name, path, size, type, parentId, …)
+- `handles` — `FileSystemFileHandle` references (Chrome/Edge only)
+- `cached-bytes` — Safari/Firefox blob cache (size-capped)
+- `thumbs` + `thumb-meta` — LRU-evicted thumbnail cache
+
+Swap the backend by implementing `StorageAdapter`.
+
+#### Directory import
+
+```typescript
+import { DirectoryPicker, walkDirectory } from 'uploadzx/fs';
+
+const picker = new DirectoryPicker();
+const { dirHandle, entries, usedFallback } = await picker.pickDirectory({
+  accept: 'image/*',
+  maxDepth: 10,
+  startIn: 'pictures',
+});
+```
+
+On browsers without `showDirectoryPicker`, falls back to `<input webkitdirectory>`.
+
+#### Save & export
+
+```typescript
+import { Saver } from 'uploadzx/fs';
+
+const saver = new Saver();
+const handle = await saver.saveAs(blob, {
+  suggestedName: 'export.jpg',
+  types: [{ description: 'JPEG', accept: { 'image/jpeg': ['.jpg'] } }],
+});
+await saver.saveInPlace(existingHandle, editedBlob);
+```
+
+#### File watching
+
+`FileWatcher` uses `FileSystemObserver` when available; otherwise polls `lastModified` + `size` (optional content-hash verification via `uploadzx/integrity`).
+
+```typescript
+import { FileWatcher } from 'uploadzx/fs';
+
+const watcher = new FileWatcher(fs.store, { pollIntervalMs: 5000 });
+watcher.on('change', (entry) => refreshPreview(entry));
+await watcher.watchDirectory(dirHandle);
+```
+
+#### Image metadata
+
+Lazy-loaded `exifr` behind a `MetadataReader` interface — nothing is bundled until you call `readMetadata()`:
+
+```typescript
+import { createMetadataReader } from 'uploadzx/fs';
+
+const reader = createMetadataReader();
+const meta = await reader.read(file);
+// meta.dimensions, meta.exif, meta.iptc, meta.xmp, meta.isRaw
+```
+
+#### Thumbnails
+
+Generated in a Web Worker (`OffscreenCanvas` → WebP) with a main-thread canvas fallback. Results are written to the LRU thumb store:
+
+```typescript
+import { createThumbnailer, ThumbnailCache } from 'uploadzx/fs';
+
+const cache = new ThumbnailCache(fs.store, createThumbnailer());
+const thumb = await cache.getOrCreate(recordId, file, { maxSize: 256 });
+```
+
+Build the worker bundle separately: `pnpm build:fs`.
+
+#### RAW decoding
+
+Kept out of the core bundle. Provide a wasm loader or use the stub for development:
+
+```typescript
+import { createRawDecoder, createStubRawDecoder } from 'uploadzx/fs/raw';
+
+fs.setRawDecoder(createStubRawDecoder()); // dev/test
+// or
+fs.setRawDecoder(createRawDecoder({ wasmLoader: () => loadYourLibRawWasm() }));
+
+const pixels = await fs.decodeRaw(entryId, true);
+// { width, height, data: Uint8Array (RGBA), colorSpace }
+```
+
+---
+
+### 5. Integrity & checksums (`uploadzx/integrity`)
+
+Opt-in streaming BLAKE3 or SHA-256 hashing in a Web Worker (Rust → wasm). Loaded lazily — zero cost when disabled.
+
+```typescript
+import Uploadzx, { TusDriver } from 'uploadzx';
+
+const uploader = new Uploadzx({
+  driver: new TusDriver({ endpoint: '/files/' }),
+  integrity: {
+    algorithm: 'blake3', // or 'sha-256'
+    verifyResume: true,    // re-hash on resume, drop on mismatch
+    sendToServer: true,    // tus metadata checksum
+    dedup: true,           // skip duplicate digests this session
+  },
+});
+
+uploader.on('hash', (fileId, digest) => {
+  console.log(`${digest.algorithm}:${digest.hex}`);
+});
+```
+
+Build: `pnpm build:integrity` (requires Rust + wasm-pack).
+
+---
+
+### 6. Validation
+
+Enforced before a file enters the queue (upload) or can be used standalone:
+
+```typescript
+import { validateFile } from 'uploadzx';
+
+const err = validateFile(file, {
+  maxSize: 100 * 1024 * 1024,
+  allowedTypes: ['image/*', 'application/pdf'],
+});
+if (err) console.warn(err);
+```
+
+Wildcard MIME subtypes (`image/*`) are supported. The File System Access picker maps `image/*` to concrete MIME types for native filtering.
+
+---
+
+### 7. React integration (`uploadzx/react`)
+
+#### Upload hooks
+
+Use focused hooks so each row re-renders only when **its own** file changes:
 
 ```tsx
 import {
@@ -88,191 +457,150 @@ function App() {
   return (
     <UploadzxProvider
       options={{
-        endpoint: 'https://your-upload-server.com/upload',
-        chunkSize: 1024 * 1024,
+        driver: new TusDriver({ endpoint: 'https://your-server.com/files/' }),
+        maxConcurrent: 3,
         autoStart: true,
       }}
     >
-      <UploadComponent />
+      <UploadUI />
     </UploadzxProvider>
   );
 }
 
-function UploadComponent() {
+function UploadUI() {
   const { pickAndUploadFiles } = useUploadzxActions();
-  // The record of ids; rows subscribe to their own state individually.
   const { uploadStates } = useUploadStates();
-
   return (
-    <div>
-      <button onClick={pickAndUploadFiles}>Upload Files</button>
-      {Object.keys(uploadStates).map((fileId) => (
-        <UploadRow key={fileId} fileId={fileId} />
+    <>
+      <button onClick={pickAndUploadFiles}>Upload</button>
+      {Object.keys(uploadStates).map((id) => (
+        <UploadRow key={id} fileId={id} />
       ))}
-    </div>
+    </>
   );
 }
 
 function UploadRow({ fileId }: { fileId: string }) {
-  // Granular subscription — re-renders only when THIS file changes.
   const state = useUploadState(fileId);
   if (!state) return null;
+  return <div>{state.file.name} — {state.progress.percentage}%</div>;
+}
+```
+
+| Hook | Purpose |
+| ---- | ------- |
+| `useUploadzxActions()` | Pick, add, pause, resume, cancel |
+| `useUploadStates()` | All upload states |
+| `useUploadState(fileId)` | Per-file state (preferred for rows) |
+| `useUploadItem(fileId)` | State + per-file actions |
+| `useQueueActions()` | Queue-level pause/resume/cancel + stats |
+| `useUnfinishedUploads()` | Resumable uploads from storage |
+| `useFilePicker(options)` | Standalone file picker |
+| `useUploadStore()` | Raw external store (advanced) |
+
+#### Filesystem hooks
+
+```tsx
+import { useFileSystemManager, useFsPermissions, useFsEntries } from 'uploadzx/react';
+
+function PhotoLibrary() {
+  const { pickDirectory, reconnect, manager } = useFileSystemManager({
+    filePicker: { accept: 'image/*', useFileSystemAccess: true },
+  });
+  const { pending, hasPending } = useFsPermissions(manager);
+  const entries = useFsEntries(manager);
+
   return (
-    <div>
-      {state.file.name} - {state.status} - {state.progress.percentage}%
-    </div>
+    <>
+      <button onClick={() => pickDirectory(true)}>Import folder</button>
+      {hasPending && (
+        <button onClick={() => reconnect(true)}>Reconnect ({pending.length})</button>
+      )}
+      <ul>{entries.map((e) => <li key={e.id}>{e.name}</li>)}</ul>
+    </>
   );
 }
 ```
 
-## React Hooks
+#### Components
 
-- `useUploadzxActions()` - Queue actions (pick, add, pause, resume, cancel, ...)
-- `useUploadStates()` - Live record of all upload states
-- `useUploadState(fileId)` - Granular per-file subscription (preferred for rows)
-- `useUploadItem(fileId)` - Per-item state + pause/resume/cancel handlers
-- `useQueueActions()` - Queue-level actions and stats
-- `useUnfinishedUploads()` - Resumable uploads recovered from storage
-- `useFilePicker(options)` - File picking functionality
-- `useUploadStore()` - Access the raw external store (advanced)
+- `UploadzxProvider` — context for upload queue
+- `UploadDropzone` — drag-and-drop upload zone
 
-> `useUploadzxContext()` still exists but is **deprecated** — prefer the focused hooks above.
+---
 
-## React Components
+## Browser support
 
-- `UploadzxProvider` - Context provider for upload functionality
-- `UploadDropzone` - Drag and drop upload component
+| Capability | Chrome / Edge | Firefox | Safari |
+| ---------- | ------------- | ------- | ------ |
+| tus uploads | ✅ | ✅ | ✅ |
+| File picker (input) | ✅ | ✅ | ✅ |
+| File System Access (handles) | ✅ | ❌ | ❌ |
+| Directory picker | ✅ | `webkitdirectory` fallback | `webkitdirectory` fallback |
+| Save picker | ✅ | download fallback | download fallback |
+| IndexedDB persistence | ✅ | ✅ | ✅ |
+| `FileSystemObserver` | ✅ | polling fallback | polling fallback |
+| Integrity wasm hasher | ✅ | ✅ | ✅ |
 
-## API Reference
-
-### Core Options
-
-```typescript
-interface UploadzxOptions {
-  endpoint: string;
-  chunkSize?: number;
-  maxConcurrent?: number;
-  autoStart?: boolean;
-  retryDelays?: number[];
-  // Static value OR an (async) factory resolved per request.
-  headers?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);
-  metadata?: Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);
-  // Enforced before a file enters the queue.
-  validation?: { maxSize?: number; allowedTypes?: string[]; maxFiles?: number };
-  // Max age (ms) of persisted records before they're reaped on init. Default 7 days; 0 disables.
-  persistenceTtlMs?: number;
-  // Pluggable backends.
-  uploaderFactory?: UploaderFactory;     // swap tus for S3/presigned/...
-  store?: PersistenceAdapter;            // swap IndexedDB for a custom store
-  // Diagnostics (off by default — the library does not log otherwise).
-  debug?: boolean;
-  logger?: Partial<{ debug: Function; warn: Function; error: Function }>;
-  filePickerOptions?: {
-    multiple?: boolean;
-    useFileSystemAccess?: boolean;
-    accept?: string;
-  };
-}
-```
-
-### Events
-
-Subscribe with `on` / `once` (each returns an unsubscribe function) or `off`:
-
-```typescript
-const off = uploader.on('progress', (p: UploadProgress) => {});
-uploader.on('stateChange', (s: UploadState) => {});
-uploader.on('complete', (fileId: string, tusUrl: string) => {});
-uploader.on('error', (fileId: string, error: Error) => {});
-uploader.on('cancel', (fileId: string) => {});
-off(); // unsubscribe
-```
-
-The legacy callback bag passed to the constructor is also supported:
-
-```typescript
-interface UploadEvents {
-  onProgress?: (progress: UploadProgress) => void;
-  onStateChange?: (state: UploadState) => void; // single argument
-  onComplete?: (fileId: string, tusUrl: string) => void;
-  onError?: (fileId: string, error: Error) => void;
-  onCancel?: (fileId: string) => void;
-}
-```
-
-### Readiness
-
-`Uploadzx` loads any previously persisted unfinished uploads asynchronously. Await `uploader.ready` (resolves on success, rejects on init failure) before relying on `getUnfinishedUploads()`.
-
-### Custom transport
-
-Implement the `Uploader` interface and pass an `uploaderFactory` to upload anywhere (S3 multipart, a presigned `PUT`, etc.) while keeping the queue, persistence, progress, and React layers unchanged.
-
-### Integrity & checksums (opt-in)
-
-Set `integrity` to hash each file once (in a Web Worker, constant memory) before upload, then reuse the digest for content-addressed resume verification, a checksum sent to your server, and dedup:
-
-```typescript
-import { Uploadzx, TusDriver } from 'uploadzx';
-
-const uploader = new Uploadzx({
-  driver: new TusDriver({ endpoint: '/files/' }),
-  integrity: { algorithm: 'blake3' }, // or 'sha-256'
-});
-
-uploader.on('hash', (fileId, digest) => {
-  console.log(`${fileId}: ${digest.algorithm}:${digest.hex}`);
-});
-```
-
-The worker + wasm are loaded lazily from the `uploadzx/integrity` subpath, so nothing is added to your bundle unless you opt in. Vite/Webpack 5/Next resolve the worker automatically; otherwise pass `integrity.workerFactory`. See the Integrity & checksums guide in the docs for the full options and bundler notes.
-
-## Browser Support
-
-- **Chrome/Edge**: Full support with File System Access API
-- **Firefox**: Full support with fallback file picker
-- **Safari**: Full support with Safari-specific optimizations
-- **Mobile browsers**: Supported with appropriate fallbacks
+---
 
 ## Examples
 
-The project includes comprehensive examples:
-
 ```bash
-# Install all dependencies and build library
+# Install dependencies and build
 pnpm examples:install
 
-# Run React + Vite example
+# React + Vite demo
 pnpm example:react
 
-# Run Vanilla JS + Vite example
+# Vanilla TS + Vite demo
 pnpm example:vanilla
 ```
+
+---
 
 ## Development
 
 ```bash
-# Install dependencies
 pnpm install
 
-# Build the core library
+# Core library (upload + fs entry)
 pnpm build
 
-# Watch for changes
-pnpm dev
+# Optional subpath bundles
+pnpm build:integrity   # wasm hasher → dist/integrity (needs Rust + wasm-pack)
+pnpm build:fs          # thumbnail worker + raw entry → dist/fs
 
-# Run the test suite (Vitest + fake-indexeddb)
-pnpm test
+# Everything (prepublish)
+pnpm build:all
 
-# Build the optional integrity (wasm) feature — needs Rust + wasm-pack
-#   rustup target add wasm32-unknown-unknown && cargo install wasm-pack
-pnpm build:integrity   # build:wasm + bundle worker/entry to dist/integrity
-pnpm build:all         # core + integrity (used by prepublishOnly)
-pnpm test:wasm         # cargo known-answer tests for the Rust crate
-
-# Run examples
-pnpm example:react
+pnpm dev               # watch mode
+pnpm test              # Vitest + fake-indexeddb
+pnpm test:wasm         # Rust crate unit tests
 ```
+
+### Project layout
+
+```
+src/
+├── index.ts              # Uploadzx facade
+├── core/                 # FilePicker, UploadQueue, FileHandleStore
+├── transport/            # TusDriver, HttpPutDriver, UploadController
+├── fs/                   # uploadzx/fs — filesystem module
+│   ├── FileSystemManager.ts
+│   ├── access/           # pick, directory, save
+│   ├── permissions/
+│   ├── store/            # FsStore + migrations
+│   ├── watch/
+│   ├── image/            # metadata, thumbnails, worker
+│   └── raw/              # uploadzx/fs/raw
+├── integrity/            # uploadzx/integrity — wasm hasher
+└── react/                # uploadzx/react — hooks & components
+```
+
+Full documentation: see the `docs/` site or [guides on GitHub](https://github.com/Hezx13/uploadzx).
+
+---
 
 ## Contributing
 
@@ -280,4 +608,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT © [uploadzx](https://github.com/Hezx13/uploadzx) 
+MIT © [uploadzx](https://github.com/Hezx13/uploadzx)

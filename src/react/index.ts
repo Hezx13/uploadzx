@@ -8,6 +8,11 @@ export { useUploadState, useUploadSelector } from './hooks/useUploadState';
 export { useUploadProgress, useUploadStatus } from './hooks/useUploadProgress';
 export { useStoreSelector } from './hooks/useStoreSelector';
 export { useFilePicker } from './hooks/useFilePicker';
+export {
+  useFileSystemManager,
+  useFsPermissions,
+  useFsEntries,
+} from './hooks/useFileSystem';
 export { useUploadItem } from './hooks/useUploadItem';
 export { useQueueActions } from './hooks/useQueueActions';
 export {

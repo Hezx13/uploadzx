@@ -22,11 +22,14 @@ describe('parseAcceptString', () => {
     ]);
   });
 
-  it('drops unrepresentable wildcard subtypes instead of emitting bad keys', () => {
-    // `image/*` alone can't be represented and must NOT become a key.
-    expect(parseAcceptString('image/*')).toBeUndefined();
+  it('expands wildcard subtypes into concrete MIME types for the native picker', () => {
+    const result = parseAcceptString('image/*');
+    expect(result).toBeDefined();
+    expect(result![0].accept['image/jpeg']).toEqual([]);
+    expect(result![0].accept['image/png']).toEqual([]);
     const mixed = parseAcceptString('image/*,application/pdf');
-    expect(mixed?.[0].accept).toEqual({ 'application/pdf': [] });
+    expect(mixed?.[0].accept['application/pdf']).toEqual([]);
+    expect(mixed?.[0].accept['image/jpeg']).toEqual([]);
   });
 });
 

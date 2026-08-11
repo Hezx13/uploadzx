@@ -1,13 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" fill="#ff4d23" />
-  <text
-    x="50%"
-    y="53%"
-    dominant-baseline="central"
-    text-anchor="middle"
-    font-family="'Space Grotesk', system-ui, sans-serif"
-    font-size="22"
-    font-weight="700"
-    fill="#0a0a0a"
-  >u</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <rect width="48" height="48" fill="#ff4d23" />
+  <g stroke="#0a0a0a" stroke-width="5" stroke-linecap="butt" stroke-linejoin="miter" fill="none">
+    <path d="M16 6 L32 18" />
+    <path d="M32 6 L16 18" />
+    <path d="M16 30 L24 24 L32 30" />
+    <path d="M24 24 L24 42" />
+  </g>
 </svg>

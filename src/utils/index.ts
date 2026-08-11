@@ -12,6 +12,25 @@ declare global {
 }
 
 /**
+ * Marks handles that are in-memory shims (Safari/Firefox fallback, or a File
+ * with no underlying platform handle) rather than real `FileSystemHandle`
+ * instances. Synthetic handles can't be structured-cloned into IndexedDB
+ * (they carry closures/functions) and can't be reopened after a page reload,
+ * so callers must check this before persisting a handle.
+ */
+const SYNTHETIC_HANDLE = Symbol('uploadzx.syntheticHandle');
+
+export function isSyntheticHandle(handle: FileSystemHandle | undefined | null): boolean {
+  return !!handle && (handle as unknown as Record<symbol, boolean>)[SYNTHETIC_HANDLE] === true;
+}
+
+/** Tags an in-memory handle shim so {@link isSyntheticHandle} can recognize it. */
+export function markHandleSynthetic<T extends object>(handle: T): T {
+  (handle as unknown as Record<symbol, boolean>)[SYNTHETIC_HANDLE] = true;
+  return handle;
+}
+
+/**
  * Resolves a value that may be supplied statically or as a (possibly async)
  * factory. Used to refresh headers/metadata per request.
  */
@@ -58,9 +77,16 @@ export function parseAcceptString(
       // Concrete MIME type. The picker accepts an empty extension list.
       mimeMap[token] = mimeMap[token] || [];
       hasUsableMime = true;
+    } else if (token.endsWith('/*')) {
+      // Wildcard subtypes: map to a broad set of common extensions so the
+      // native picker can still filter usefully (e.g. image/* -> image/jpeg, …).
+      const base = token.slice(0, -2);
+      const wildExts = wildcardExtensions(base);
+      for (const mime of wildExts) {
+        mimeMap[mime] = mimeMap[mime] || [];
+        hasUsableMime = true;
+      }
     }
-    // Wildcard subtypes like `image/*` are not representable here and are
-    // intentionally dropped rather than emitted as an invalid key.
   }
 
   if (!hasUsableMime && !mimeMap['application/octet-stream']) {
@@ -68,6 +94,17 @@ export function parseAcceptString(
   }
 
   return [{ description: 'Files', accept: mimeMap }];
+}
+
+const WILDCARD_MIME_MAP: Record<string, string[]> = {
+  image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/tiff', 'image/bmp', 'image/heic', 'image/heif'],
+  video: ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'],
+  audio: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/flac'],
+};
+
+function wildcardExtensions(baseType: string): string[] {
+  const key = baseType.split('/')[0];
+  return WILDCARD_MIME_MAP[key] ?? [`${baseType}/octet-stream`];
 }
 
 export function formatFileSize(bytes: number): string {
@@ -218,6 +255,7 @@ export function createMockFileHandle(
       throw new Error('Write operations not supported in Safari fallback mode');
     },
     isSameEntry: async () => false,
+    [SYNTHETIC_HANDLE]: true,
   } as unknown as FileSystemFileHandle;
 
   return mockHandle;
